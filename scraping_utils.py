@@ -1,34 +1,27 @@
 import requests
 import os
-from lxml import html
-import json
 
 
-def get_url(url, filename):
-    if not os.path.exists(filename):
+# Always save the file in the same directory as this script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+output_file = os.path.join(script_dir, "monthlyElement.html")
 
-        # fetch the page if it doesn't exist
-        page = requests.get(url)
+url = "https://www.hko.gov.hk/en/cis/monthlyElement.htm?stn=HKO&ele=RF"
+headers = {
+    "User-Agent": "python-requests/2.0 (+https://example.com/)",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 
-        # save the page to a file
-        try:
-            with open(filename, 'w', encoding='UTF8') as f:
-                f.write(page.text)
-            page = page.text
-        except Exception as e:
-            print('There is a problem saving the file:', e)
-            return None
+try:
+    resp = requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()  # raise on HTTP errors
 
-    else:
-        # if the page exists, read it from the file
-        with open(filename, 'r', encoding='UTF8') as f:
-            page = f.read() 
-            
-    return page
+    # Save as text using response encoding (fall back to utf-8)
+    encoding = resp.encoding if resp.encoding else "utf-8"
+    with open(output_file, "w", encoding=encoding) as f:
+        f.write(resp.text)
 
-def parse(page, mode = 'html'):
-    match mode:
-        case 'html':
-            return html.fromstring(page)
-        case 'json':
-            return json.loads(page)
+    print(f"Saved page to {output_file} (encoding: {encoding})")
+
+except requests.exceptions.RequestException as e:
+    print(f"Request failed: {e}")
