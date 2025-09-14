@@ -1,4 +1,4 @@
-# HK Rainfall Visualiser
+# HK Rainfall Visualiser 🚧 (WIP)
 
 
 🌧️ HK Rainfall Visualiser
@@ -32,5 +32,5 @@ Instructions will be added once the first version is ready.
 
 ## License 📄
 
-To be determined.
+To be determined
 
