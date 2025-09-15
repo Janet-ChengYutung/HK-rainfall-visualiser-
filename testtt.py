@@ -1,303 +1,334 @@
-import os
-import sys
-import random
-import math
+"""
+ui_with_png_buttons.py
+
+Pygame 範例：使用外部 PNG 圖示放到按鈕中間，並依按鈕點擊改變圖示或顏色。
+- 圖檔目錄（範例）： /Users/janet/Downloads/pfad/HK-rainfall-visualiser-
+- 範例檔名（不含副檔名）： start_black, start_green, start_red,
+                              stop_black, stop_green, stop_red,
+                              reload_black
+- 若某圖檔找不到，程式會自動退回繪製內建向量圖示以免崩潰。
+"""
+
 import pygame
-from pathlib import Path
+import pygame.gfxdraw
+import sys
+import math
+import os
 
-# Optional: if you want the script to convert PDF -> PNG automatically,
-# uncomment the following block and install pdf2image + poppler.
-# from pdf2image import convert_from_path
-
-# CONFIG
-# If you exported the PDF to a PNG manually, set IMAGE_PATH to that PNG.
-# If you want automatic conversion from the uploaded PDF, set PDF_PATH and leave IMAGE_PATH as None.
-IMAGE_PATH = "ui_background.png"   # recommended: exported from your PDF
-PDF_PATH = "TV - 1.pdf"            # the uploaded PDF filename (if using automatic conversion)
-GENERATED_GRAPH_PATH = "graph.png" # optional: external graph image (when available)
-
-WINDOW_TITLE = "UI Demo"
+# ---------- Configuration ----------
+WIDTH, HEIGHT = 1280, 720
 FPS = 60
 
-# UI layout (adjust as needed)
-FRAME_PADDING = 20
-# Button definitions will be positioned relative to the window size in runtime
-BUTTON_SIZE = (160, 48)
-BUTTON_MARGIN = 12
+BG_COLOR = (180, 180, 180)
+PANEL_COLOR = (255, 255, 255)
+PANEL_BORDER_RADIUS = 18
 
-# Graph area (left side) as fraction of width
-GRAPH_AREA_RECT = None  # computed when we know window size
+PLACEHOLDER_COLOR = (230, 230, 230)
+BUTTON_COLOR = (242, 242, 242)
+BUTTON_HOVER = (225, 225, 225)
+BUTTON_DOWN = (205, 205, 205)
+ICON_COLOR = (32, 32, 32)
+SHADOW_ALPHA = 36
 
-# Color & style
-GREY_FRAME_COLOR = (200, 200, 200)
-BACKGROUND_FILL = (30, 30, 30)
-BUTTON_BORDER_COLOR = (180, 180, 180)
-BUTTON_TEXT_COLOR = (255, 255, 255)
-HOVER_OVERLAY = (255, 255, 255, 40)
-PRESSED_OVERLAY = (0, 0, 0, 100)
+# ---------- Your icon files settings ----------
+# NOTE: Modify this base path if needed.
+ICON_BASE_PATH = "/Users/janet/Downloads/pfad/HK-rainfall-visualiser-"
+# NOTE: The code will append suffixes and ".png" to load specific images.
+# Expected file examples (without extension): start_black.png, start_green.png, start_red.png, stop_black.png, stop_green.png, stop_red.png, reload_black.png
 
-# -----------------------
-# helper functions
-# -----------------------
+FPS_CLOCK = pygame.time.Clock()
 
-def convert_pdf_to_png(pdf_path, output_png="ui_background.png", poppler_path=None):
+# ---------- Helpers ----------
+def rounded_rect(surface, rect, color, radius):
+    pygame.draw.rect(surface, color, rect, border_radius=radius)
+
+def draw_shadow(surface, rect, radius, offset=(4,4), alpha=40):
+    sw = rect.width + abs(offset[0]) + 8
+    sh = rect.height + abs(offset[1]) + 8
+    shadow_surf = pygame.Surface((sw, sh), pygame.SRCALPHA)
+    shadow_surf.fill((0,0,0,0))
+    srect = pygame.Rect(4, 4, rect.width, rect.height)
+    pygame.draw.rect(shadow_surf, (0,0,0,alpha), srect, border_radius=radius)
+    surface.blit(shadow_surf, (rect.x + offset[0] - 4, rect.y + offset[1] - 4))
+
+def point_in_rect(pt, rect):
+    return rect.collidepoint(pt)
+
+# ---------- Icon Loader ----------
+class IconSet:
     """
-    Convert first page of pdf to PNG using pdf2image. Requires pdf2image and poppler.
-    Returns output path or raises.
+    Load PNG icons for a button. Each IconSet holds multiple variants (e.g. black, green, red).
+    If some images are missing, entries will be None.
     """
-    try:
-        from pdf2image import convert_from_path
-    except Exception as e:
-        raise RuntimeError("pdf2image not installed. pip install pdf2image") from e
+    def __init__(self, base_name):
+        # base_name example: "start" or "stop" or "reload"
+        self.base_name = base_name
+        # convention: variants we expect
+        self.variants = {
+            "black": None,
+            "green": None,
+            "red": None
+        }
+        # reload may only have black; it's fine if others are None
+        self.load_images()
 
-    # If poppler binaries are not in PATH, pass poppler_path to convert_from_path
-    pages = convert_from_path(pdf_path, dpi=150, poppler_path=poppler_path) if poppler_path else convert_from_path(pdf_path, dpi=150)
-    if not pages:
-        raise RuntimeError("No pages found in PDF")
-    pages[0].save(output_png, "PNG")
-    return output_png
+    def load_images(self):
+        for key in list(self.variants.keys()):
+            filename = f"{self.base_name}_{key}.png"
+            fullpath = os.path.join(ICON_BASE_PATH, filename)
+            try:
+                img = pygame.image.load(fullpath).convert_alpha()
+                self.variants[key] = img
+                # print("Loaded icon:", fullpath)
+            except Exception as e:
+                # image not found or load error -> leave as None, fallback will be used
+                # print("Icon not found (will fallback):", fullpath, "->", e)
+                self.variants[key] = None
 
-def generate_placeholder_graph_surface(size):
-    """
-    Create a semi-transparent surface simulating a rainfall graph.
-    Replace this with loading an image produced by your lxml pipeline later.
-    """
-    w, h = size
-    surf = pygame.Surface((w, h), pygame.SRCALPHA)
-    surf.fill((0, 0, 0, 0))  # fully transparent background
+    def get(self, variant):
+        return self.variants.get(variant, None)
 
-    # draw axes
-    axis_color = (220, 220, 220, 180)
-    pygame.draw.line(surf, axis_color, (40, h-30), (w-10, h-30), 2)  # x axis
-    pygame.draw.line(surf, axis_color, (40, 10), (40, h-30), 2)      # y axis
+# ---------- Button Class using external icons ----------
+class RoundedButton:
+    def __init__(self, rect, role, iconset=None, radius=10):
+        """
+        role: a semantic role string, e.g. "start" (will toggle green), "stop" (will toggle red), "reload" (stays black)
+        iconset: IconSet instance corresponding to this button role (may be None)
+        """
+        self.rect = pygame.Rect(rect)
+        self.role = role  # "start" / "stop" / "reload"
+        self.iconset = iconset
+        self.radius = radius
+        self.hover = False
+        self.down = False
+        # state: which variant to show; default "black"
+        self.state_variant = "black"
+        self.callback = None
 
-    # simulate rainfall values and draw bar chart with gradient
-    margin_left = 44
-    margin_right = 10
-    max_bars = max(6, min(20, w // 40))
-    bar_w = (w - margin_left - margin_right) / max_bars * 0.75
-    gap = ((w - margin_left - margin_right) - (bar_w * max_bars)) / max_bars
+    def set_state_variant(self, var):
+        # var should be "black", "green", "red", etc.
+        self.state_variant = var
 
-    # generate some random rainfall-like values
-    values = [random.uniform(0.1, 1.0) * (0.5 + 0.5*math.sin(i/2.0)) for i in range(max_bars)]
-    max_val = max(values) if values else 1.0
+    def draw_icon_with_png(self, surface):
+        """
+        NOTE: This function is responsible for placing the PNG icon centered in the button.
+        Behavior:
+        - If an appropriate PNG (matching current state variant) exists, scale it to fit within
+          the icon area (keeping aspect ratio) and blit it centered.
+        - If PNG not available, fall back to vector drawing (draw_icon_vector).
+        """
+        if self.iconset is None:
+            # no iconset provided -> fallback
+            self.draw_icon_vector(surface)
+            return
 
-    for i, val in enumerate(values):
-        x = margin_left + i * (bar_w + gap)
-        height_bar = (h - 50) * (val / max_val)
-        y = (h - 30) - height_bar
-        # gradient color
-        top_color = (30, 144, 255, 180)   # dodger blue
-        bottom_color = (10, 60, 120, 200)
-        # draw rectangle with vertical gradient (simple approximation)
-        steps = 6
-        for s in range(steps):
-            r = top_color[0] + (bottom_color[0]-top_color[0]) * (s/steps)
-            g = top_color[1] + (bottom_color[1]-top_color[1]) * (s/steps)
-            b = top_color[2] + (bottom_color[2]-top_color[2]) * (s/steps)
-            a = top_color[3] + (bottom_color[3]-top_color[3]) * (s/steps)
-            seg_h = height_bar / steps
-            seg_rect = pygame.Rect(int(x), int(y + s*seg_h), int(bar_w), int(seg_h+1))
-            surf.fill((int(r), int(g), int(b), int(a)), seg_rect)
+        # Try to get the image for the current variant
+        img = self.iconset.get(self.state_variant)
+        if img is None:
+            # fallback to black if current variant missing
+            img = self.iconset.get("black")
 
-        # bar border (semi-transparent)
-        pygame.draw.rect(surf, (255,255,255,80), pygame.Rect(int(x), int(y), int(bar_w), int(height_bar)), 1)
+        if img is None:
+            # still None -> draw vector fallback
+            self.draw_icon_vector(surface)
+            return
 
-    # overlay a semi-transparent area to ensure translucency when blitted
-    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 90))  # darken background slightly
-    surf.blit(overlay, (0,0), special_flags=pygame.BLEND_RGBA_SUB)
+        # Calculate area to place icon: keep padding so icon doesn't touch rounded corners
+        pad = max(2, int(self.rect.width * 0.18))
+        max_w = self.rect.width - pad*2
+        max_h = self.rect.height - pad*2
 
-    return surf
+        # Scale the image to fit in (max_w, max_h) while preserving aspect ratio
+        iw, ih = img.get_size()
+        scale = min(max_w / iw, max_h / ih, 1.0)  # don't upscale beyond original size; change to >1 to allow upscaling
+        target_w = int(round(iw * scale))
+        target_h = int(round(ih * scale))
+        img_scaled = pygame.transform.smoothscale(img, (target_w, target_h))
 
-def load_graph_image(path, size):
-    """
-    Load an image to use as the graph overlay and scale to size.
-    If path doesn't exist, return generated placeholder.
-    """
-    if path and Path(path).exists():
-        img = pygame.image.load(path).convert_alpha()
-        img = pygame.transform.smoothscale(img, size)
-        # ensure transparency by setting alpha
-        temp = pygame.Surface(size, pygame.SRCALPHA)
-        temp.blit(img, (0,0))
-        # optionally make it semi-transparent
-        temp.set_alpha(200)
-        return temp
-    else:
-        return generate_placeholder_graph_surface(size)
+        # Compute centered position
+        dest_x = self.rect.x + (self.rect.width - target_w)//2
+        dest_y = self.rect.y + (self.rect.height - target_h)//2
 
-# -----------------------
-# Main Pygame App
-# -----------------------
+        surface.blit(img_scaled, (dest_x, dest_y))
 
+    def draw_icon_vector(self, surface):
+        """
+        Fallback vector drawing (simpler shapes). This is used if PNG not found.
+        """
+        icon_surf = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
+        pad = max(2, int(self.rect.width * 0.18))
+        inner_w = self.rect.width - pad*2
+        inner_h = self.rect.height - pad*2
+        cx = pad + inner_w/2.0
+        cy = pad + inner_h/2.0
+
+        if self.role == "start":
+            # play triangle
+            tri_w = inner_w * 0.58
+            tri_h = inner_h * 0.62
+            p1 = (cx - tri_w/2.0, cy - tri_h/2.0)
+            p2 = (cx - tri_w/2.0, cy + tri_h/2.0)
+            p3 = (cx + tri_w/2.0, cy)
+            pts = [(int(round(x)), int(round(y))) for (x,y) in (p1,p2,p3)]
+            pygame.gfxdraw.filled_polygon(icon_surf, pts, ICON_COLOR)
+            pygame.gfxdraw.aapolygon(icon_surf, pts, ICON_COLOR)
+
+        elif self.role == "stop":
+            # stop: small filled square
+            s = int(min(inner_w, inner_h) * 0.5)
+            r = pygame.Rect(int(cx - s/2), int(cy - s/2), s, s)
+            pygame.gfxdraw.box(icon_surf, r, ICON_COLOR)
+
+        elif self.role == "reload":
+            # simple circular arrow using lines
+            radius = min(inner_w, inner_h) * 0.38
+            pygame.gfxdraw.arc(icon_surf, int(cx), int(cy), int(radius), -160, 100, ICON_COLOR)
+            # small arrowhead
+            ae = math.radians(100)
+            ax = int(cx + radius * math.cos(ae))
+            ay = int(cy + radius * math.sin(ae))
+            tip = (ax + 6, ay)
+            left = (ax - 2, ay - 6)
+            right = (ax - 2, ay + 6)
+            tri = [(int(tip[0]), int(tip[1])), (int(left[0]), int(left[1])), (int(right[0]), int(right[1]))]
+            pygame.gfxdraw.filled_polygon(icon_surf, tri, ICON_COLOR)
+
+        surface.blit(icon_surf, (self.rect.x, self.rect.y))
+
+    def draw(self, surface):
+        # shadow
+        draw_shadow(surface, self.rect, self.radius, offset=(3,3), alpha=SHADOW_ALPHA)
+        # background depending on state
+        color = BUTTON_COLOR
+        if self.down:
+            color = BUTTON_DOWN
+        elif self.hover:
+            color = BUTTON_HOVER
+        rounded_rect(surface, self.rect, color, self.radius)
+
+        # Draw PNG icon centered (main functionality)
+        self.draw_icon_with_png(surface)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEMOTION:
+            self.hover = point_in_rect(event.pos, self.rect)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if point_in_rect(event.pos, self.rect):
+                self.down = True
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.down and point_in_rect(event.pos, self.rect):
+                # Click action: change state_variant based on role
+                # - start: toggle to green when clicked (show start_green)
+                # - stop: toggle to red when clicked (show stop_red)
+                # - reload: no color change (stays black)
+                if self.role == "start":
+                    # toggle behavior: if currently green -> back to black, else set green
+                    if self.state_variant == "green":
+                        self.state_variant = "black"
+                    else:
+                        self.state_variant = "green"
+                elif self.role == "stop":
+                    if self.state_variant == "red":
+                        self.state_variant = "black"
+                    else:
+                        self.state_variant = "red"
+                elif self.role == "reload":
+                    self.state_variant = "black"
+                # call callback if set
+                if self.callback:
+                    self.callback(self)
+            self.down = False
+
+# ---------- Main ----------
 def main():
     pygame.init()
-    pygame.font.init()
-    clock = pygame.time.Clock()
-    font = pygame.font.SysFont(None, 22)
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+    pygame.display.set_caption("UI with PNG button icons")
+    font = pygame.font.SysFont(None, 20)
 
-    # 1) Ensure background image exists; if not, try to convert PDF automatically (optional)
-    bg_path = Path(IMAGE_PATH)
-    if not bg_path.exists():
-        # If IMAGE_PATH missing but PDF exists, try conversion automatically
-        pdf_path = Path(PDF_PATH)
-        if pdf_path.exists():
-            print(f"Background PNG not found. Converting first page of {PDF_PATH} to {IMAGE_PATH} ...")
-            try:
-                converted = convert_pdf_to_png(str(pdf_path), output_png=IMAGE_PATH)
-                print("Converted PDF to PNG:", converted)
-            except Exception as e:
-                print("Failed to convert PDF -> PNG:", e)
-                print("Continuing with a solid color background.")
-                bg_path = None
-        else:
-            print(f"Background image {IMAGE_PATH} not found and PDF {PDF_PATH} not available.")
-            bg_path = None
-    else:
-        bg_path = bg_path
+    # Prepare IconSets for each button role
+    # NOTE: This is the part "responsible for loading PNG icons from your folder".
+    # You can change names here if your files differ.
+    start_icons = IconSet("start")
+    stop_icons = IconSet("stop")
+    reload_icons = IconSet("reload")
 
-    # load background or fill fallback
-    if bg_path and Path(bg_path).exists():
-        bg_img = pygame.image.load(str(bg_path)).convert()
-        win_w, win_h = bg_img.get_size()
-    else:
-        # fallback window size
-        win_w, win_h = 1024, 600
-        bg_img = None
+    def layout(window_w, window_h):
+        margin = int(min(window_w, window_h) * 0.03)
+        inner_rect = pygame.Rect(margin, margin, window_w - 2*margin, window_h - 2*margin)
+        return inner_rect
 
-    screen = pygame.display.set_mode((win_w, win_h))
-    pygame.display.set_caption(WINDOW_TITLE)
+    # Create buttons and attach their IconSets
+    buttons = []
+    # Layout will be updated each frame, rects will be set later
+    btn_start = RoundedButton((0,0,64,64), role="start", iconset=start_icons, radius=10)
+    btn_stop = RoundedButton((0,0,64,64), role="stop", iconset=stop_icons, radius=10)
+    btn_reload = RoundedButton((0,0,64,64), role="reload", iconset=reload_icons, radius=10)
+    buttons = [btn_start, btn_stop, btn_reload]
 
-    # compute UI regions
-    frame_rect = pygame.Rect(FRAME_PADDING, FRAME_PADDING, win_w - 2*FRAME_PADDING, win_h - 2*FRAME_PADDING)
+    def on_button(btn):
+        print("Button clicked:", btn.role, "state_variant:", btn.state_variant)
 
-    # Graph area on left: take 48% width and full height minus paddings
-    graph_w = int(frame_rect.width * 0.48)
-    graph_h = int(frame_rect.height * 0.9)
-    graph_x = frame_rect.left + 20
-    graph_y = frame_rect.top + 20
-    graph_rect = pygame.Rect(graph_x, graph_y, graph_w, graph_h)
-
-    # Buttons: three stacked vertically near bottom-right inside the frame
-    btn_w, btn_h = BUTTON_SIZE
-    btn_x = frame_rect.right - btn_w - 24
-    # stack bottom-up
-    btn_y3 = frame_rect.bottom - 24 - btn_h
-    btn_y2 = btn_y3 - btn_h - BUTTON_MARGIN
-    btn_y1 = btn_y2 - btn_h - BUTTON_MARGIN
-
-    buttons = [
-        {"name": "Load", "rect": pygame.Rect(btn_x, btn_y1, btn_w, btn_h), "action": "load"},
-        {"name": "Refresh", "rect": pygame.Rect(btn_x, btn_y2, btn_w, btn_h), "action": "refresh"},
-        {"name": "Quit", "rect": pygame.Rect(btn_x, btn_y3, btn_w, btn_h), "action": "quit"},
-    ]
-
-    # load initial placeholder or external graph image
-    graph_surf = load_graph_image(GENERATED_GRAPH_PATH, (graph_rect.width, graph_rect.height))
-    graph_alpha = 180  # semi-transparent global alpha (0-255)
-    graph_surf.set_alpha(graph_alpha)
-
-    pressed_button = None
+    for b in buttons:
+        b.callback = on_button
 
     running = True
     while running:
-        mx, my = pygame.mouse.get_pos()
-        mouse_pressed = pygame.mouse.get_pressed()[0]
+        w, h = screen.get_size()
+        inner = layout(w, h)
 
+        # placeholder rectangle bottom-left
+        ph_w = int(inner.width * 0.32)
+        ph_h = int(inner.height * 0.18)
+        ph_x = inner.x + int(inner.width * 0.04)
+        ph_y = inner.y + inner.height - ph_h - int(inner.height * 0.04)
+        placeholder_rect = pygame.Rect(ph_x, ph_y, ph_w, ph_h)
+
+        # buttons layout bottom-right
+        btn_size = max(48, int(min(inner.width, inner.height) * 0.06))
+        btn_spacing = int(btn_size * 0.5)
+        total_btn_width = btn_size * len(buttons) + btn_spacing * (len(buttons)-1)
+        br_x = inner.x + inner.width - total_btn_width - int(inner.width * 0.035)
+        br_y = inner.y + inner.height - btn_size - int(inner.height * 0.04)
+
+        # set rects for buttons
+        for i, b in enumerate(buttons):
+            b.rect = pygame.Rect(br_x + i*(btn_size + btn_spacing), br_y, btn_size, btn_size)
+            b.radius = int(btn_size * 0.18)
+
+        # Event handling
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.VIDEORESIZE:
+                pass
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_r:
-                    # 'r' to refresh graph (simulate new data)
-                    graph_surf = generate_placeholder_graph_surface((graph_rect.width, graph_rect.height))
-                    graph_surf.set_alpha(graph_alpha)
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    for b in buttons:
-                        if b["rect"].collidepoint(event.pos):
-                            pressed_button = b["name"]
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1 and pressed_button:
-                    for b in buttons:
-                        if b["name"] == pressed_button and b["rect"].collidepoint(event.pos):
-                            # execute action
-                            action = b["action"]
-                            if action == "quit":
-                                running = False
-                            elif action == "refresh":
-                                # refresh placeholder graph (in real use, reload generated graph image)
-                                graph_surf = load_graph_image(GENERATED_GRAPH_PATH, (graph_rect.width, graph_rect.height))
-                                graph_surf.set_alpha(graph_alpha)
-                                print("Graph refreshed")
-                            elif action == "load":
-                                # in your workflow, you would run lxml parsing and save an image to GENERATED_GRAPH_PATH,
-                                # then load it here. For now we regenerate placeholder.
-                                graph_surf = generate_placeholder_graph_surface((graph_rect.width, graph_rect.height))
-                                graph_surf.set_alpha(graph_alpha)
-                                print("Load action (placeholder)")
-                            else:
-                                print("Button action:", action)
-                    pressed_button = None
 
-        # draw
-        if bg_img:
-            screen.blit(bg_img, (0,0))
-        else:
-            screen.fill(BACKGROUND_FILL)
+            for b in buttons:
+                b.handle_event(event)
 
-        # draw grey frame (semi-3D effect)
-        pygame.draw.rect(screen, GREY_FRAME_COLOR, frame_rect, border_radius=6)
-        inner = frame_rect.inflate(-6, -6)
-        pygame.draw.rect(screen, (240,240,240), inner, 2, border_radius=6)
+        # Draw UI
+        screen.fill(BG_COLOR)
+        inner_shadow_rect = pygame.Rect(inner.x, inner.y, inner.width, inner.height)
+        draw_shadow(screen, inner_shadow_rect, PANEL_BORDER_RADIUS, offset=(6,6), alpha=35)
+        rounded_rect(screen, inner, PANEL_COLOR, PANEL_BORDER_RADIUS)
 
-        # draw graph area background (slightly darker than frame)
-        graph_bg = pygame.Surface((graph_rect.width, graph_rect.height))
-        graph_bg.fill((245, 245, 245))
-        graph_bg.set_alpha(16)
-        screen.blit(graph_bg, (graph_rect.left, graph_rect.top))
+        draw_shadow(screen, placeholder_rect, 12, offset=(3,3), alpha=20)
+        rounded_rect(screen, placeholder_rect, PLACEHOLDER_COLOR, radius=12)
 
-        # blit semi-transparent graph onto left area
-        screen.blit(graph_surf, (graph_rect.left, graph_rect.top))
-
-        # optional: draw border around graph area
-        pygame.draw.rect(screen, (180,180,180), graph_rect, 1, border_radius=4)
-
-        # draw buttons
         for b in buttons:
-            rect = b["rect"]
-            # base fill (transparent so background shows)
-            base = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
-            base.fill((0,0,0,0))
-            screen.blit(base, (rect.x, rect.y))
+            b.draw(screen)
 
-            is_hover = rect.collidepoint((mx, my))
-            is_pressed = (pressed_button == b["name"] and mouse_pressed)
-            overlay = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
-            if is_pressed:
-                overlay.fill(PRESSED_OVERLAY)
-            elif is_hover:
-                overlay.fill(HOVER_OVERLAY)
-            else:
-                overlay.fill((0,0,0,0))
-            screen.blit(overlay, (rect.x, rect.y))
-
-            # border and label
-            pygame.draw.rect(screen, BUTTON_BORDER_COLOR, rect, 1, border_radius=6)
-            label_surf = font.render(b["name"], True, BUTTON_TEXT_COLOR)
-            label_rect = label_surf.get_rect(center=rect.center)
-            screen.blit(label_surf, label_rect)
-
-        # optional status text
-        help_text = "Press R to regenerate placeholder graph. Replace graph with your lxml-generated image: " + GENERATED_GRAPH_PATH
-        help_s = font.render(help_text, True, (220,220,220))
-        screen.blit(help_s, (FRAME_PADDING+10, win_h - FRAME_PADDING - 22))
+        # Demo labels
+        label = font.render("Preview / content area", True, (120,120,120))
+        screen.blit(label, (inner.x + 16, inner.y + 12))
+        small = font.render("placeholder", True, (120,120,120))
+        screen.blit(small, (placeholder_rect.x + 12, placeholder_rect.y + 10))
 
         pygame.display.flip()
-        clock.tick(FPS)
+        FPS_CLOCK.tick(FPS)
 
     pygame.quit()
     sys.exit()
