@@ -77,10 +77,15 @@ def plot_rainfall_for_year(years, rainfall, year):
     vals = rainfall[idx]
     max_idx = vals.index(max(vals))
     min_idx = vals.index(min(vals))
-    colors = ['royalblue'] * 12
-    colors[max_idx] = 'red'
-    colors[min_idx] = 'green'
-    plt.bar(months, vals, color=colors)
+    colors = ['#b8b8b8'] * 12  # gray for others
+    colors[max_idx] = '#ea801c'  # orange for highest
+    colors[min_idx] = '#1a80bb'  # blue for lowest
+    bars = plt.bar(months, vals, color=colors)
+    # Add legend for colors
+    import matplotlib.patches as mpatches
+    orange_patch = mpatches.Patch(color='#ea801c', label='Highest Month')
+    blue_patch = mpatches.Patch(color='#1a80bb', label='Lowest Month')
+    plt.legend(handles=[orange_patch, blue_patch], loc='upper right')
     plt.title(f"Monthly Rainfall in Hong Kong ({year})", fontsize=16, fontweight='bold')
     plt.xlabel("Month", fontsize=12)
     plt.ylabel("Rainfall (mm)", fontsize=12)
