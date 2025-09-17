@@ -1,4 +1,3 @@
-
 import pygame
 import pygame.gfxdraw
 import sys
@@ -29,14 +28,8 @@ class ImageButton:
                 if self.callback:
                     self.callback(self)
             self.down = False
-"""
-ui_with_temporary_color_and_font.py
 
-- Uses external PNG icons for buttons (start/stop/reload) stored in ICON_BASE_PATH.
-- When a button is clicked, its icon variant changes for 1.0 second (start -> green; stop -> red; reload stays black).
-- Loads a custom font file if FONT_PATH points to a TTF/OTF; otherwise falls back to a system font.
-- If PNG icon is missing, falls back to vector drawing.
-"""
+# Simple Pygame demo: 3 image buttons (start, stop, reload) with color change on press.
 
 # ---------- Configuration ----------
 WIDTH, HEIGHT = 1280, 720
@@ -60,34 +53,10 @@ TEMP_VARIANT_DURATION = 0.35
 
 FPS_CLOCK = pygame.time.Clock()
 
-# ---------- Helpers ----------
-def rounded_rect(surface, rect, color, radius):
-    pygame.draw.rect(surface, color, rect, border_radius=radius)
-
-
-def point_in_rect(pt, rect):
-    return rect.collidepoint(pt)
-
-
-
+# (removed unused point_in_rect)
 # ---------- Icon ----------
 
 
-# ---------- Font loader ----------
-def load_font(default_size):
-    """
-    Try to load custom font file (FONT_PATH). If not available, return a SysFont fallback.
-    """
-    if FONT_PATH:
-        try:
-            return pygame.font.Font(FONT_PATH, default_size)
-        except Exception as e:
-            print("Failed to load custom font at", FONT_PATH, "->", e)
-    # fallback: try to use Google Sans family name (likely not installed), else default
-    try:
-        return pygame.font.SysFont("Google Sans", default_size)
-    except Exception:
-        return pygame.font.SysFont(None, default_size)
 
 # ---------- Main ----------
 def main():
@@ -96,7 +65,6 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("UI: temporary icon variant + custom font")
-    font = load_font(20)
 
     # Create three buttons: start, stop, reload (after pygame is initialized)
 
@@ -161,10 +129,10 @@ def main():
     btn_stop.callback = on_stop
     btn_reload.callback = on_reload
 
+
     def layout(window_w, window_h):
         margin = int(min(window_w, window_h) * 0.03)
-        inner_rect = pygame.Rect(margin, margin, window_w - 2*margin, window_h - 2*margin)
-        return inner_rect
+        return pygame.Rect(margin, margin, window_w - 2*margin, window_h - 2*margin)
 
 
     running = True
@@ -182,35 +150,24 @@ def main():
 
         w, h = screen.get_size()
         inner = layout(w, h)
-
-        # Button layout (bottom right) -- must be after 'inner' is defined
         btn_size = max(48, int(min(inner.width, inner.height) * 0.08))
         spacing = int(btn_size * 0.25)
         total_width = btn_size * 3 + spacing * 2
         base_x = inner.right - total_width - int(inner.width * 0.035)
         base_y = inner.bottom - btn_size - int(inner.height * 0.04)
-
         btn_start.rect = pygame.Rect(base_x, base_y, btn_size, btn_size)
         btn_stop.rect = pygame.Rect(base_x + btn_size + spacing, base_y, btn_size, btn_size)
         btn_reload.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y, btn_size, btn_size)
-
-        # placeholder rect
-        ph_w = int(inner.width * 0.32)
-        ph_h = int(inner.height * 0.18)
-        ph_x = inner.x + int(inner.width * 0.04)
-        ph_y = inner.y + inner.height - ph_h - int(inner.height * 0.04)
-        placeholder_rect = pygame.Rect(ph_x, ph_y, ph_w, ph_h)
-
-        # Draw background and panels
         screen.fill(BG_COLOR)
-        rounded_rect(screen, inner, PANEL_COLOR, PANEL_BORDER_RADIUS)
-        rounded_rect(screen, placeholder_rect, PLACEHOLDER_COLOR, radius=12)
-
-        # Draw the three image buttons
+        # Draw a rounded rectangle frame (panel) in the lower left, similar to the screenshot
+        panel_w = int(WIDTH * 0.28)
+        panel_h = int(HEIGHT * 0.19)
+        panel_x = int(WIDTH * 0.047)
+        panel_y = int(HEIGHT * 0.75)
+        pygame.draw.rect(screen, PANEL_COLOR, (panel_x, panel_y, panel_w, panel_h), border_radius=PANEL_BORDER_RADIUS)
         btn_start.draw(screen)
         btn_stop.draw(screen)
         btn_reload.draw(screen)
-
         pygame.display.flip()
         FPS_CLOCK.tick(FPS)
 
