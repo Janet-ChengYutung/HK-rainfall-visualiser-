@@ -93,15 +93,20 @@ def main():
             surface.blit(bg_scaled, (self.rect.x, self.rect.y))
             # Draw icon centered, keep original aspect ratio, fit within 40% of button size
             icon = self.icon_pressed if self.down else self.icon_normal
-            max_w = int(self.rect.width * 0.4)
-            max_h = int(self.rect.height * 0.4)
+            # Make reload icon slightly larger (45% of button size), others 40%
+            if getattr(self, 'is_reload', False):
+                icon_scale_factor = 0.45
+            else:
+                icon_scale_factor = 0.4
+            max_w = int(self.rect.width * icon_scale_factor)
+            max_h = int(self.rect.height * icon_scale_factor)
             iw, ih = icon.get_width(), icon.get_height()
             scale = min(max_w / iw, max_h / ih, 1.0)
             new_w = int(iw * scale)
             new_h = int(ih * scale)
             icon_scaled = pygame.transform.smoothscale(icon, (new_w, new_h))
             icon_x = self.rect.x + (self.rect.width - new_w) // 2
-            icon_y = self.rect.y + (self.rect.height - new_h) // 2
+            icon_y = self.rect.y + (self.rect.height - new_h) // 2 - 3  # Move icon 3px higher
             surface.blit(icon_scaled, (icon_x, icon_y))
 
         def handle_event(self, event):
@@ -117,6 +122,7 @@ def main():
     btn_start = OverlayButton((0,0,80,80), icon_start_black, icon_start_green)
     btn_stop = OverlayButton((0,0,80,80), icon_stop_black, icon_stop_red)
     btn_reload = OverlayButton((0,0,80,80), icon_reload_black)
+    btn_reload.is_reload = True  # Mark this button as reload for larger icon
 
     def on_start(btn):
         print("Start button clicked")

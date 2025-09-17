@@ -67,18 +67,56 @@ def plot_rainfall_for_year(xml_path, year):
 		raise ValueError(f"Year {year} not found in rainfall data.")
 	idx = years.index(year)
 	months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-	plt.figure(figsize=(10,5))
-	plt.bar(months, rainfall[idx], color='royalblue')
-	plt.title(f"Monthly Rainfall in Hong Kong ({year})")
-	plt.xlabel("Month")
-	plt.ylabel("Rainfall (mm)")
+	vals = rainfall[idx]
+	max_idx = vals.index(max(vals))
+	min_idx = vals.index(min(vals))
+	# Use the exact color codes from the reference
+	color_orange = '#ea801c'
+	color_blue = '#1a80bb'
+	color_gray = '#b8b8b8'
+	colors = [color_gray] * 12
+	colors[max_idx] = color_orange
+	colors[min_idx] = color_blue
+	fig, ax = plt.subplots(figsize=(10,5))
+	bars = ax.bar(months, vals, color=colors)
+	ax.set_title(f"Monthly Rainfall in Hong Kong ({year})")
+	ax.set_xlabel("Month")
+	ax.set_ylabel("Rainfall (mm)")
+	import matplotlib.patches as mpatches
+	orange_patch = mpatches.Patch(color=color_orange, label='Highest Month')
+	blue_patch = mpatches.Patch(color=color_blue, label='Lowest Month')
+	ax.legend(handles=[orange_patch, blue_patch], loc='upper right', frameon=False)
 	plt.tight_layout()
-	plt.show()
+	return fig, ax
 
+def show_and_download_menu(xml_path):
+	years, _ = load_rainfall_data(xml_path)
+	min_year = min(years)
+	max_year = max(years)
+	while True:
+		print(f"\nChoose a year to view rainfall data (from {min_year} to {max_year})")
+		choice = input("Enter year (or 'q' to quit): ").strip()
+		if choice.lower() == 'q':
+			print("Exiting.")
+			break
+		if choice not in years:
+			print("Invalid year. Please try again.")
+			continue
+		fig, ax = plot_rainfall_for_year(xml_path, choice)
+		plt.show()
+		save = input("Download this chart as PNG? (y/n): ").strip().lower()
+		if save == 'y':
+			out_dir = "rainfall_charts"
+			if not os.path.exists(out_dir):
+				os.makedirs(out_dir)
+			out_path = os.path.join(out_dir, f"rainfall_{choice}.png")
+			fig.savefig(out_path)
+			print(f"Chart saved to {out_path}")
+		plt.close(fig)
 
 if __name__ == "__main__":
-	# Change the year as needed, or make this interactive
+	# Interactive terminal menu for viewing and downloading charts
 	try:
-		plot_rainfall_for_year('monthlyElement.xml', '2023')
+		show_and_download_menu('monthlyElement.xml')
 	except Exception as e:
 		print(f"Error: {e}")
