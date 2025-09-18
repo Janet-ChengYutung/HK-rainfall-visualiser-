@@ -81,6 +81,87 @@ def main():
     icon_chart_off = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_off.png")).convert_alpha()
     icon_chart_on = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_on.png")).convert_alpha()
 
+    # Load Google Sans Code font if available, otherwise use default system font
+    font_path = os.path.join(os.path.dirname(__file__), "GoogleSansCode-VariableFont_wght.ttf")
+    if os.path.exists(font_path):
+        try:
+            UI_FONT = pygame.font.Font(font_path, 20)
+        except Exception:
+            UI_FONT = pygame.font.SysFont(None, 20)
+    else:
+        UI_FONT = pygame.font.SysFont(None, 20)
+
+    # Year slider widget (minimalist)
+    class YearSlider:
+        def __init__(self, rect, year_min=1884, year_max=2025, initial=None):
+            self.rect = pygame.Rect(rect)
+            self.year_min = year_min
+            self.year_max = year_max
+            self.range = year_max - year_min
+            self.year = initial if initial is not None else year_max
+            self.dragging = False
+
+        def year_to_pos(self, year):
+            t = (year - self.year_min) / max(1, self.range)
+            return int(self.rect.x + 8 + t * (self.rect.width - 16))
+
+        def pos_to_year(self, x):
+            t = (x - (self.rect.x + 8)) / max(1, (self.rect.width - 16))
+            year = int(round(self.year_min + t * self.range))
+            year = max(self.year_min, min(self.year_max, year))
+            # remove choice for 1940-1946 by snapping to nearest allowed year
+            if 1940 <= year <= 1946:
+                # choose nearest of 1939 or 1947
+                low = 1939
+                high = 1947
+                # clamp to bounds
+                if low < self.year_min:
+                    return high
+                if high > self.year_max:
+                    return low
+                if (year - low) <= (high - year):
+                    return low
+                else:
+                    return high
+            return year
+
+        def handle_event(self, event):
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self.rect.collidepoint(event.pos):
+                    self.dragging = True
+                    self.year = self.pos_to_year(event.pos[0])
+            elif event.type == pygame.MOUSEMOTION:
+                if self.dragging:
+                    self.year = self.pos_to_year(event.pos[0])
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if self.dragging:
+                    self.dragging = False
+
+        def draw(self, surface, font):
+            # bar background
+            bar_h = 8
+            bar_rect = pygame.Rect(self.rect.x, self.rect.y + (self.rect.height - bar_h)//2, self.rect.width, bar_h)
+            pygame.draw.rect(surface, (200,200,200), bar_rect, border_radius=4)
+            # fill upto current year
+            pos = self.year_to_pos(self.year)
+            fill_rect = pygame.Rect(bar_rect.x+4, bar_rect.y, pos - (bar_rect.x+4), bar_rect.height)
+            pygame.draw.rect(surface, (120,160,255), fill_rect, border_radius=4)
+            # thumb
+            thumb_r = 10
+            pygame.draw.circle(surface, (255,255,255), (pos, bar_rect.centery), thumb_r)
+            pygame.draw.circle(surface, (100,120,140), (pos, bar_rect.centery), thumb_r, 2)
+            # year label above bar
+            year_surf = font.render(str(self.year), True, (20,20,20))
+            ys = year_surf.get_rect(center=(pos, bar_rect.y - 14))
+            surface.blit(year_surf, ys)
+
+    # instantiate year slider and place it bottom-center
+    slider_w = int(WIDTH * 0.4)
+    slider_h = 40
+    slider_x = (WIDTH - slider_w) // 2
+    slider_y = HEIGHT - slider_h - 24
+    year_slider = YearSlider((slider_x, slider_y, slider_w, slider_h), 1884, 2025, 2025)
+
     class OverlayButton:
         def __init__(self, rect, icon_normal, icon_pressed=None, callback=None, toggle=False):
             self.rect = pygame.Rect(rect)
@@ -187,6 +268,13 @@ def main():
 
 
     running = True
+    # cache loaded yearly chart images to avoid repeated disk IO
+    chart_image_cache = {}
+    # chart drag-and-drop state
+    chart_pos = None  # (x,y) where the chart is drawn; preserved across frames
+    chart_dragging = False
+    chart_drag_offset = (0, 0)
+    last_chart_rect = None  # pygame.Rect of last drawn chart (for hit testing)
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -195,10 +283,25 @@ def main():
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
+            # --- chart drag handling (start/stop/drag) ---
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                # start dragging if user clicked on the last drawn chart while it's visible
+                if (btn_chart.toggled or btn_chart.down) and last_chart_rect is not None and last_chart_rect.collidepoint(event.pos):
+                    chart_dragging = True
+                    mx, my = event.pos
+                    chart_drag_offset = (mx - last_chart_rect.x, my - last_chart_rect.y)
+            elif event.type == pygame.MOUSEMOTION:
+                if chart_dragging:
+                    mx, my = event.pos
+                    chart_pos = (int(mx - chart_drag_offset[0]), int(my - chart_drag_offset[1]))
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if chart_dragging:
+                    chart_dragging = False
             btn_start.handle_event(event)
             btn_stop.handle_event(event)
             btn_reload.handle_event(event)
             btn_chart.handle_event(event)
+            year_slider.handle_event(event)
 
         w, h = screen.get_size()
         inner = layout(w, h)
@@ -213,18 +316,101 @@ def main():
         # place chart button above the reload button
         btn_chart.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y - (btn_size + spacing), btn_size, btn_size)
         screen.fill(BG_COLOR)
-        # Draw a rounded rectangle frame (panel) in the lower left, similar to the screenshot
-        panel_w = int(WIDTH * 0.28)
-        panel_h = int(HEIGHT * 0.19)
-        panel_x = int(WIDTH * 0.047)
-        panel_y = int(HEIGHT * 0.75)
+        # Draw a rounded rectangle frame (panel) in the lower left. If a pre-rendered
+        # chart for the selected year exists, size the panel to match the chart aspect
+        # ratio while fitting within a maximum area.
+        # Allow the chart to occupy a larger portion of the window so
+        # high-resolution images are shown nearer to native resolution.
+        # These fractions can be adjusted if you prefer a different max size.
+        max_panel_w = int(w * 0.45)
+        max_panel_h = int(h * 0.60)
+        panel_x = int(w * 0.047)
+        # default place near bottom with a small bottom margin
+        bottom_margin = int(h * 0.04)
         # Show panel while the chart button is pressed (down) or toggled on
         if btn_chart.toggled or btn_chart.down:
-            pygame.draw.rect(screen, PANEL_COLOR, (panel_x, panel_y, panel_w, panel_h), border_radius=PANEL_BORDER_RADIUS)
+            # look for pre-rendered chart image for the selected year
+            chart_year = year_slider.year
+            chart_path = os.path.join(os.path.dirname(__file__), 'rainfall_charts', f'rainfall_{chart_year}.png')
+            img = None
+            if chart_year in chart_image_cache:
+                img = chart_image_cache[chart_year]
+            else:
+                if os.path.exists(chart_path):
+                    try:
+                        loaded = pygame.image.load(chart_path).convert_alpha()
+                        chart_image_cache[chart_year] = loaded
+                        img = loaded
+                    except Exception:
+                        img = None
+            if img is not None:
+                iw, ih = img.get_width(), img.get_height()
+                # enlarge chart by 40% but ensure it fits inside max panel area
+                enlarge_factor = 1.40
+                scale = min(max_panel_w / (iw * enlarge_factor), max_panel_h / (ih * enlarge_factor), 1.0)
+                chart_w = max(1, int(iw * scale * enlarge_factor))
+                chart_h = max(1, int(ih * scale * enlarge_factor))
+                panel_y = h - chart_h - bottom_margin
+                # draw the chart image directly (no panel box), opaque (100% opacity)
+                alpha = 255
+                img_scaled = pygame.transform.smoothscale(img, (chart_w, chart_h)).convert_alpha()
+                img_scaled.set_alpha(alpha)
+                # if the user moved the chart, use chart_pos; otherwise default to panel origin
+                if chart_pos is None:
+                    surface_x = panel_x
+                    surface_y = panel_y
+                    chart_pos = (surface_x, surface_y)
+                else:
+                    surface_x, surface_y = chart_pos
+                screen.blit(img_scaled, (surface_x, surface_y))
+                # remember the rect so we can start dragging from it next frame
+                last_chart_rect = pygame.Rect(int(surface_x), int(surface_y), chart_w, chart_h)
+            else:
+                # fallback to previous placeholder with max size
+                panel_w = max_panel_w
+                panel_h = max_panel_h
+                panel_y = int(HEIGHT * 0.75)
+                # semi-transparent rounded panel background for placeholder (50% opacity)
+                alpha = int(255 * 0.5)
+                radius = max(6, int(PANEL_BORDER_RADIUS * 1.2))
+                panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+                pygame.draw.rect(panel_surf, (PANEL_COLOR[0], PANEL_COLOR[1], PANEL_COLOR[2], alpha), (0, 0, panel_w, panel_h), border_radius=radius)
+                screen.blit(panel_surf, (panel_x, panel_y))
+                # draw placeholder chart inside panel
+                chart_margin = 12
+                cx = panel_x + chart_margin
+                cy = panel_y + chart_margin
+                cw = panel_w - chart_margin*2
+                ch = panel_h - chart_margin*2
+                # background for chart area
+                pygame.draw.rect(screen, (245,245,250), (cx, cy, cw, ch), border_radius=6)
+                # axes
+                ax_x = cx + 30
+                ax_y = cy + ch - 24
+                pygame.draw.line(screen, (180,180,180), (ax_x, cy+6), (ax_x, ax_y), 2)
+                pygame.draw.line(screen, (180,180,180), (ax_x, ax_y), (cx+cw-8, ax_y), 2)
+                # sample data generated from year (to vary visually)
+                samples = 24
+                pts = []
+                seed = year_slider.year % 10
+                for i in range(samples):
+                    t = i / (samples-1)
+                    x = ax_x + int(t * (cw - 48))
+                    # simple wave + seed offset
+                    yval = 0.5 + 0.4 * math.sin(2*math.pi*(t*3 + seed*0.13))
+                    y = int(ax_y - yval * (ch - 48))
+                    pts.append((x,y))
+                if len(pts) > 1:
+                    pygame.draw.lines(screen, (40,120,200), False, pts, 3)
+                # label with the selected year
+                label = UI_FONT.render(f"Year: {year_slider.year}", True, (40,40,40))
+                screen.blit(label, (cx+6, cy+6))
         btn_start.draw(screen)
         btn_stop.draw(screen)
         btn_reload.draw(screen)
         btn_chart.draw(screen)
+        # draw year slider on bottom center
+        year_slider.draw(screen, UI_FONT)
         pygame.display.flip()
         FPS_CLOCK.tick(FPS)
 
