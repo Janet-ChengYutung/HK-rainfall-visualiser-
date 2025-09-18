@@ -4,6 +4,7 @@ import sys
 import math
 import os
 import time
+import xml.etree.ElementTree as ET
 
 # ---------- Image Button Class ----------
 class ImageButton:
@@ -29,6 +30,73 @@ class ImageButton:
                     self.callback(self)
             self.down = False
 
+# ---------- TSX Background Loader ----------
+class TSXBackground:
+    def __init__(self, tsx_file_path):
+        """Load a TSX tileset file for use as a background."""
+        self.tsx_path = tsx_file_path
+        self.background_image = None
+        self.tile_width = 0
+        self.tile_height = 0
+        self.image_width = 0
+        self.image_height = 0
+        self.load_tsx()
+    
+    def load_tsx(self):
+        """Parse the TSX file and load the associated image."""
+        try:
+            if not os.path.exists(self.tsx_path):
+                print(f"TSX file not found: {self.tsx_path}")
+                return False
+            
+            # Parse the TSX XML file
+            tree = ET.parse(self.tsx_path)
+            root = tree.getroot()
+            
+            # Get tileset properties
+            self.tile_width = int(root.get('tilewidth', 32))
+            self.tile_height = int(root.get('tileheight', 32))
+            
+            # Find the image element
+            image_elem = root.find('image')
+            if image_elem is not None:
+                image_source = image_elem.get('source')
+                self.image_width = int(image_elem.get('width', 0))
+                self.image_height = int(image_elem.get('height', 0))
+                
+                # Resolve image path relative to TSX file
+                tsx_dir = os.path.dirname(self.tsx_path)
+                image_path = os.path.join(tsx_dir, image_source)
+                
+                if os.path.exists(image_path):
+                    self.background_image = pygame.image.load(image_path).convert()
+                    print(f"Loaded TSX background: {image_path}")
+                    return True
+                else:
+                    print(f"TSX image not found: {image_path}")
+                    return False
+            else:
+                print("No image element found in TSX file")
+                return False
+                    
+        except Exception as e:
+            print(f"Error loading TSX file: {e}")
+            return False
+    
+    def draw(self, surface, x=0, y=0, scale=None):
+        """Draw the background image on the surface."""
+        if self.background_image:
+            if scale:
+                # Scale the image to fit the surface or specified dimensions
+                scaled_image = pygame.transform.scale(self.background_image, scale)
+                surface.blit(scaled_image, (x, y))
+            else:
+                surface.blit(self.background_image, (x, y))
+    
+    def is_loaded(self):
+        """Check if the TSX background was successfully loaded."""
+        return self.background_image is not None
+
 # Simple Pygame demo: 3 image buttons (start, stop, reload) with color change on press.
 
 # ---------- Configuration ----------
@@ -42,7 +110,10 @@ PANEL_BORDER_RADIUS = 18
 PLACEHOLDER_COLOR = (230, 230, 230)
 
 # Where your icon PNG files live (update to your path)
-ICON_BASE_PATH = "/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/image"
+ICON_BASE_PATH = os.path.join(os.path.dirname(__file__), "image")
+
+# Optional: path to a TSX background file (Tiled tileset format)
+TSX_BACKGROUND_PATH = os.path.join(os.path.dirname(__file__), "sample_background.tsx")
 
 # Optional: path to a TTF/OTF font file (Google Sans or another). If None or not found, system font used.
 # Example: "/Users/janet/Downloads/fonts/GoogleSans-Regular.ttf"
@@ -65,6 +136,17 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("UI: temporary icon variant + custom font")
+
+    # Load TSX background if available
+    tsx_background = None
+    if os.path.exists(TSX_BACKGROUND_PATH):
+        tsx_background = TSXBackground(TSX_BACKGROUND_PATH)
+        if tsx_background.is_loaded():
+            print(f"TSX background loaded successfully from: {TSX_BACKGROUND_PATH}")
+        else:
+            print("Failed to load TSX background, using default background color")
+    else:
+        print(f"TSX background file not found: {TSX_BACKGROUND_PATH}")
 
     # Create three buttons: start, stop, reload (after pygame is initialized)
 
@@ -315,7 +397,14 @@ def main():
         btn_reload.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y, btn_size, btn_size)
         # place chart button above the reload button
         btn_chart.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y - (btn_size + spacing), btn_size, btn_size)
-        screen.fill(BG_COLOR)
+        # Clear screen and draw background
+        if tsx_background and tsx_background.is_loaded():
+            # Use TSX background scaled to fit window
+            w, h = pygame.display.get_surface().get_size()
+            tsx_background.draw(screen, scale=(w, h))
+        else:
+            # Use default background color
+            screen.fill(BG_COLOR)
         # Draw a rounded rectangle frame (panel) in the lower left. If a pre-rendered
         # chart for the selected year exists, size the panel to match the chart aspect
         # ratio while fitting within a maximum area.
