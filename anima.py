@@ -1,6 +1,7 @@
 import math
 import pygame
 import sys
+import colorsys
 
 # --- CONFIG ---
 RAIN_DATA = [15.2, 8.7, 45.3, 78.9, 156.4, 234.7, 298.5, 267.3, 189.6, 67.8, 23.4, 12.1]
@@ -28,13 +29,13 @@ BG_COLOR = (0, 0, 0)
 
 # speed params
 SPEED_FACTOR = 6.0
-BASE_TIME_SCALE = 20.0  # updated start speed per your request
+BASE_TIME_SCALE = 25.0  # updated start speed per your request
 
-# whiten controls (replace saturation controls)
-TOP_WHITEN_BIAS = 0.30      # how much to move top rows toward white (0..1)
-BOTTOM_WHITEN_BOOST = 0.25  # how much to move bottom rows toward white (0..1)
+# saturation controls (replace previous brightness options)
+TOP_SATURATION_BIAS = 0.30      # how much to boost saturation toward the top (0..1)
+BOTTOM_SATURATION_BOOST = 0.25  # how much to boost saturation toward the bottom (0..1)
 
-# --- pattern generation (returns (char, norm) per cell) ---
+# --- pattern generation (same algorithm, returns (char, norm) per cell) ---
 def generate_fluid_pattern(data, global_time, cols=COLS, rows=ROWS, speed_factor=SPEED_FACTOR, base_scale=BASE_TIME_SCALE):
     max_val = max(data) if data else 1.0
     grid = []
@@ -81,14 +82,14 @@ def lerp_color(a, b, t):
             int(a[1] + (b[1]-a[1]) * t),
             int(a[2] + (b[2]-a[2]) * t))
 
-# get base color for a row using palette with top & bottom bias, then apply whiten toward white
-def row_base_color(row_idx, total_rows, top_whiten=TOP_WHITEN_BIAS, bottom_boost=BOTTOM_WHITEN_BOOST):
+# get base color for a row using palette with slight top bias
+def row_base_color(row_idx, total_rows, top_saturation_bias=TOP_SATURATION_BIAS, bottom_boost=BOTTOM_SATURATION_BOOST):
     t = row_idx / max(1, total_rows - 1)
 
-    # a tiny top bias on palette position (keeps previous aesthetic)
-    t_top_biased = max(0.0, t - (1.0 - t) * (top_whiten * 0.15))
+    # apply a tiny top bias on palette position to favor brighter palette positions near top
+    t_top_biased = max(0.0, t - (1.0 - t) * top_saturation_bias * 0.2)
 
-    # bottom boost so bottom rows move closer to the lightest palette entry
+    # apply bottom boost so bottom rows move closer to the lightest palette entry
     if t > 0.6:
         bottom_factor = (t - 0.6) / 0.4  # 0..1 for 0.6..1.0
         t_bottom_biased = t_top_biased + (1.0 - t_top_biased) * (bottom_factor * bottom_boost)
@@ -102,24 +103,21 @@ def row_base_color(row_idx, total_rows, top_whiten=TOP_WHITEN_BIAS, bottom_boost
     frac = seg_pos - i
     c1 = BLUE_PALETTE[i]
     c2 = BLUE_PALETTE[min(i+1, segs)]
-    base = lerp_color(c1, c2, frac)
+    return lerp_color(c1, c2, frac)
 
-    # apply whiten bias by interpolating toward white depending on row position:
-    # top rows get TOP_WHITEN_BIAS stronger, bottom rows get BOTTOM_WHITEN_BOOST influence
-    top_influence = max(0.0, 1.0 - t) * top_whiten
-    bottom_influence = 0.0
-    if t > 0.6:
-        bottom_factor = (t - 0.6) / 0.4
-        bottom_influence = bottom_factor * bottom_boost
-    whiten_amount = min(1.0, top_influence + bottom_influence)
-    if whiten_amount > 0:
-        white = (255, 255, 255)
-        base = lerp_color(base, white, whiten_amount * 0.9)  # 0..0.9 toward white
-    return base
+# increase saturation of an RGB color by factor s (>1 increases sat, <1 decreases)
+def increase_saturation(rgb, factor):
+    # convert 0..255 -> 0..1
+    r, g, b = rgb
+    r_f, g_f, b_f = r/255.0, g/255.0, b/255.0
+    h, l, s = colorsys.rgb_to_hls(r_f, g_f, b_f)
+    s_new = max(0.0, min(1.0, s * factor))
+    r2, g2, b2 = colorsys.hls_to_rgb(h, l, s_new)
+    return (int(r2*255), int(g2*255), int(b2*255))
 
 # apply density tint (makes dense chars brighter and slightly more cyan)
 def apply_density_tint(base_color, norm):
-    # norm 0..1 -> mix base_color toward a very bright cyan/white
+    # norm 0..1 -> mix base_color toward a very bright cyan
     bright = (230, 255, 255)
     t1 = norm
     c_mid = lerp_color(base_color, bright, t1 * 0.95)
@@ -128,15 +126,23 @@ def apply_density_tint(base_color, norm):
     b = min(255, int(b + 70 * norm))
     return (r, g, b)
 
-# final color for a cell (includes a small time modulation for liveliness)
-def final_cell_color(base, norm, row_idx, total_rows, time_mod=0.0):
-    # subtle modulation of brightness by time_mod (0..1)
-    mod = 1.0 + (time_mod - 0.5) * 0.08  # small +/- change
-    r, g, b = apply_density_tint(base, norm)
-    r = int(max(0, min(255, r * mod)))
-    g = int(max(0, min(255, g * mod)))
-    b = int(max(0, min(255, b * mod)))
-    return (r, g, b)
+# overall function to compute final color for a cell considering top/bottom saturation biases
+def final_cell_color(base, norm, row_idx, total_rows, top_sat_bias, bottom_sat_boost, time_mod=0.0):
+    # row saturation factor: top rows get their sat boosted by (1 + top_sat_bias), bottom rows get boost by bottom_sat_boost scaled by proximity
+    t = row_idx / max(1, total_rows - 1)
+    # top contribution (stronger near top)
+    top_contrib = max(0.0, 1.0 - t) * top_sat_bias
+    # bottom contribution (stronger near bottom)
+    bottom_contrib = 0.0
+    if t > 0.6:
+        bottom_factor = (t - 0.6) / 0.4
+        bottom_contrib = bottom_factor * bottom_sat_boost
+    sat_factor = 1.0 + top_contrib + bottom_contrib
+    # add a small time-based modulation to saturation for subtle movement
+    sat_factor *= (1.0 + time_mod * 0.06)
+    saturated = increase_saturation(base, sat_factor)
+    # apply density tint (brightening + cyan shift based on norm)
+    return apply_density_tint(saturated, norm)
 
 # --- PYGAME MAIN ---
 def main():
@@ -155,12 +161,12 @@ def main():
     window_height = char_h * ROWS + PADDING * 2
 
     screen = pygame.display.set_mode((window_width, window_height))
-    pygame.display.set_caption('Rain Art - Blue (Whiten Controls)')
+    pygame.display.set_caption('Rain Art - Blue (Saturation Controls)')
 
     clock = pygame.time.Clock()
     frame_time = 0.0
     running = True
-    global SPEED_FACTOR, BASE_TIME_SCALE, TOP_WHITEN_BIAS, BOTTOM_WHITEN_BOOST
+    global SPEED_FACTOR, BASE_TIME_SCALE, TOP_SATURATION_BIAS, BOTTOM_SATURATION_BOOST
 
     while running:
         for event in pygame.event.get():
@@ -181,19 +187,19 @@ def main():
                 if event.key == pygame.K_LEFT:
                     BASE_TIME_SCALE *= 0.8
                     print("BASE_TIME_SCALE:", round(BASE_TIME_SCALE, 2))
-                # whiten controls
+                # saturation controls
                 if event.key == pygame.K_w:
-                    TOP_WHITEN_BIAS = min(1.5, TOP_WHITEN_BIAS + 0.05)
-                    print("TOP_WHITEN_BIAS:", round(TOP_WHITEN_BIAS, 3))
+                    TOP_SATURATION_BIAS = min(2.5, TOP_SATURATION_BIAS + 0.05)
+                    print("TOP_SATURATION_BIAS:", round(TOP_SATURATION_BIAS, 3))
                 if event.key == pygame.K_s:
-                    TOP_WHITEN_BIAS = max(0.0, TOP_WHITEN_BIAS - 0.05)
-                    print("TOP_WHITEN_BIAS:", round(TOP_WHITEN_BIAS, 3))
+                    TOP_SATURATION_BIAS = max(0.0, TOP_SATURATION_BIAS - 0.05)
+                    print("TOP_SATURATION_BIAS:", round(TOP_SATURATION_BIAS, 3))
                 if event.key == pygame.K_e:
-                    BOTTOM_WHITEN_BOOST = min(1.5, BOTTOM_WHITEN_BOOST + 0.05)
-                    print("BOTTOM_WHITEN_BOOST:", round(BOTTOM_WHITEN_BOOST, 3))
+                    BOTTOM_SATURATION_BOOST = min(2.5, BOTTOM_SATURATION_BOOST + 0.05)
+                    print("BOTTOM_SATURATION_BOOST:", round(BOTTOM_SATURATION_BOOST, 3))
                 if event.key == pygame.K_d:
-                    BOTTOM_WHITEN_BOOST = max(0.0, BOTTOM_WHITEN_BOOST - 0.05)
-                    print("BOTTOM_WHITEN_BOOST:", round(BOTTOM_WHITEN_BOOST, 3))
+                    BOTTOM_SATURATION_BOOST = max(0.0, BOTTOM_SATURATION_BOOST - 0.05)
+                    print("BOTTOM_SATURATION_BOOST:", round(BOTTOM_SATURATION_BOOST, 3))
 
         dt = clock.tick(FPS) / 1000.0
         frame_time += dt
@@ -203,13 +209,15 @@ def main():
         # black background
         screen.fill(BG_COLOR)
 
-        # render grid: compute base row color from palette (with whiten bias), then final color per char
+        # render grid: compute base row color from palette, then final color per char
         for row_idx, row in enumerate(grid):
             y = PADDING + row_idx * char_h
-            base = row_base_color(row_idx, ROWS, top_whiten=TOP_WHITEN_BIAS, bottom_boost=BOTTOM_WHITEN_BOOST)
+            base = row_base_color(row_idx, ROWS)
+            # small time modulation for saturation per column
             for col_idx, (ch, norm) in enumerate(row):
                 col_mod = (math.sin((frame_time * 1.2) + col_idx * 0.12) + 1) / 2  # 0..1
-                color = final_cell_color(base, norm, row_idx, ROWS, time_mod=col_mod)
+                # compute final color with saturation adjustments
+                color = final_cell_color(base, norm, row_idx, ROWS, TOP_SATURATION_BIAS, BOTTOM_SATURATION_BOOST, time_mod=col_mod)
                 surf = font.render(ch, True, color)
                 x = PADDING + col_idx * char_w
                 screen.blit(surf, (x, y))
