@@ -28,7 +28,12 @@ BG_COLOR = (0, 0, 0)
 
 # speed params
 SPEED_FACTOR = 6.0
-BASE_TIME_SCALE = 20.0  # updated start speed per your request
+BASE_TIME_SCALE = 20.0  # base time scale; effective speed will be derived from data
+# Global multiplier to amplify how strongly yearly rain affects animation speed.
+# Increase to make differences between years more obvious (1.0 = original behavior)
+SPEED_MULTIPLIER = 3.5
+# cap for normalizing mean rainfall into 0..1. Set to a reasonable high monthly mean (mm)
+GLOBAL_MEAN_CAP = 300.0
 
 # whiten controls (replace saturation controls)
 TOP_WHITEN_BIAS = 0.30      # how much to move top rows toward white (0..1)
@@ -36,7 +41,27 @@ BOTTOM_WHITEN_BOOST = 0.25  # how much to move bottom rows toward white (0..1)
 
 # --- pattern generation (returns (char, norm) per cell) ---
 def generate_fluid_pattern(data, global_time, cols=COLS, rows=ROWS, speed_factor=SPEED_FACTOR, base_scale=BASE_TIME_SCALE):
-    max_val = max(data) if data else 1.0
+    # compute a data-driven speed multiplier based on the year's overall rain
+    # mean_intensity is mean(month)/max(month) in [0..1]
+    if data:
+        max_val = max(data)
+        mean_val = sum(data) / len(data)
+        max_val = max(max_val, 1.0)
+        # Normalize mean by a global cap so absolute values matter (not only per-year max)
+        mean_intensity = min(1.0, mean_val / GLOBAL_MEAN_CAP)
+    else:
+        max_val = 1.0
+        mean_intensity = 0.0
+
+    # map mean_intensity to a wider multiplier range so differences between
+    # dry/normal/wet years are more obvious. We bias the mapping to give
+    # a stronger effect for high-mean years.
+    # mean_intensity in [0..1] -> data_speed_multiplier roughly in [0.3 .. 2.3]
+    data_speed_multiplier = 0.3 + (mean_intensity ** 0.7) * 2.0
+
+    # effective speed factor used per-cell (apply global multiplier)
+    effective_speed_factor = speed_factor * data_speed_multiplier * SPEED_MULTIPLIER
+
     grid = []
     for y in range(rows):
         row_chars = []
@@ -44,7 +69,9 @@ def generate_fluid_pattern(data, global_time, cols=COLS, rows=ROWS, speed_factor
             data_index = int((x / cols) * len(data))
             intensity = data[data_index] / max_val
 
-            time_scale = base_scale + intensity * speed_factor
+            # per-cell time scale uses per-cell intensity (month relative to year max)
+            # and the effective_speed_factor derived from the year's mean rainfall
+            time_scale = base_scale + intensity * effective_speed_factor
             t = global_time * time_scale
 
             flowX = x + (t * 0.2)
@@ -129,13 +156,20 @@ def apply_density_tint(base_color, norm):
     return (r, g, b)
 
 # final color for a cell (includes a small time modulation for liveliness)
-def final_cell_color(base, norm, row_idx, total_rows, time_mod=0.0):
+def final_cell_color(base, norm, row_idx, total_rows, time_mod=0.0, white_factor=0.0):
     # subtle modulation of brightness by time_mod (0..1)
     mod = 1.0 + (time_mod - 0.5) * 0.08  # small +/- change
     r, g, b = apply_density_tint(base, norm)
     r = int(max(0, min(255, r * mod)))
     g = int(max(0, min(255, g * mod)))
     b = int(max(0, min(255, b * mod)))
+    # blend toward white based on white_factor (0..1). This creates random
+    # per-cell flashes that push colors toward white over time.
+    if white_factor and white_factor > 0:
+        wr = int(255 * white_factor + r * (1 - white_factor))
+        wg = int(255 * white_factor + g * (1 - white_factor))
+        wb = int(255 * white_factor + b * (1 - white_factor))
+        return (wr, wg, wb)
     return (r, g, b)
 
 # --- PYGAME MAIN ---
@@ -169,31 +203,7 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                if event.key == pygame.K_UP:
-                    SPEED_FACTOR *= 1.2
-                    print("SPEED_FACTOR:", round(SPEED_FACTOR, 2))
-                if event.key == pygame.K_DOWN:
-                    SPEED_FACTOR *= 0.8
-                    print("SPEED_FACTOR:", round(SPEED_FACTOR, 2))
-                if event.key == pygame.K_RIGHT:
-                    BASE_TIME_SCALE *= 1.2
-                    print("BASE_TIME_SCALE:", round(BASE_TIME_SCALE, 2))
-                if event.key == pygame.K_LEFT:
-                    BASE_TIME_SCALE *= 0.8
-                    print("BASE_TIME_SCALE:", round(BASE_TIME_SCALE, 2))
-                # whiten controls
-                if event.key == pygame.K_w:
-                    TOP_WHITEN_BIAS = min(1.5, TOP_WHITEN_BIAS + 0.05)
-                    print("TOP_WHITEN_BIAS:", round(TOP_WHITEN_BIAS, 3))
-                if event.key == pygame.K_s:
-                    TOP_WHITEN_BIAS = max(0.0, TOP_WHITEN_BIAS - 0.05)
-                    print("TOP_WHITEN_BIAS:", round(TOP_WHITEN_BIAS, 3))
-                if event.key == pygame.K_e:
-                    BOTTOM_WHITEN_BOOST = min(1.5, BOTTOM_WHITEN_BOOST + 0.05)
-                    print("BOTTOM_WHITEN_BOOST:", round(BOTTOM_WHITEN_BOOST, 3))
-                if event.key == pygame.K_d:
-                    BOTTOM_WHITEN_BOOST = max(0.0, BOTTOM_WHITEN_BOOST - 0.05)
-                    print("BOTTOM_WHITEN_BOOST:", round(BOTTOM_WHITEN_BOOST, 3))
+                # (whiten controls removed: whiten biases are fixed in config)
 
         dt = clock.tick(FPS) / 1000.0
         frame_time += dt
@@ -209,7 +219,19 @@ def main():
             base = row_base_color(row_idx, ROWS, top_whiten=TOP_WHITEN_BIAS, bottom_boost=BOTTOM_WHITEN_BOOST)
             for col_idx, (ch, norm) in enumerate(row):
                 col_mod = (math.sin((frame_time * 1.2) + col_idx * 0.12) + 1) / 2  # 0..1
-                color = final_cell_color(base, norm, row_idx, ROWS, time_mod=col_mod)
+                # deterministic pseudo-random seed per cell
+                seed = (row_idx * 1315423911) ^ (col_idx * 2654435761)
+                # small jitter based on seed and time to create random white flashes
+                # compute a slow phase for this cell
+                phase = (seed % 1000) / 1000.0
+                # oscillate white factor with a slow sine and per-cell phase, scaled by a small amplitude
+                white_osc = (math.sin(frame_time * 1.5 + phase * 6.28318) + 1) / 2  # 0..1
+                # reduce amplitude so white flashes are noticeable but infrequent
+                white_factor = (white_osc ** 3) * 0.9  # bias toward 0, peak near 1
+                # add a threshold so only some cells flash (introduce sparsity)
+                sparsity = ((seed >> 3) & 31) / 31.0  # 0..1 per cell
+                white_factor = white_factor * (sparsity * 0.8)
+                color = final_cell_color(base, norm, row_idx, ROWS, time_mod=col_mod, white_factor=white_factor)
                 surf = font.render(ch, True, color)
                 x = PADDING + col_idx * char_w
                 screen.blit(surf, (x, y))

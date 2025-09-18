@@ -4,6 +4,19 @@ import sys
 import math
 import os
 import time
+# Safe stub for TSX background loader (project may provide a real loader elsewhere)
+def create_tsx_background(path, w, h):
+    return None
+
+# optional animation module (animationtest) and rainfall loader (viewchart)
+try:
+    import animationtest
+except Exception:
+    animationtest = None
+try:
+    from viewchart import load_rainfall_data
+except Exception:
+    load_rainfall_data = None
 
 # ---------- Image Button Class ----------
 class ImageButton:
@@ -90,7 +103,19 @@ def main():
         try:
             UI_FONT = pygame.font.Font(font_path, 20)
             # smaller font for year label above the slider
-            YEAR_FONT = pygame.font.Font(font_path, 14)
+            # Prefer a system font that contains digit glyphs to avoid missing-glyph boxes.
+            preferred = ['arialunicode', 'arial', 'helvetica', 'timesnewroman']
+            found = None
+            available = {f.lower() for f in pygame.font.get_fonts()}
+            for p in preferred:
+                if p in available:
+                    found = p
+                    break
+            if found:
+                YEAR_FONT = pygame.font.SysFont(found, 14)
+            else:
+                # fallback to packaged font if system fonts don't contain digits
+                YEAR_FONT = pygame.font.Font(font_path, 14)
         except Exception:
             UI_FONT = pygame.font.SysFont(None, 20)
             YEAR_FONT = pygame.font.SysFont(None, 14)
@@ -159,11 +184,30 @@ def main():
             pygame.draw.circle(surface, (100,120,140), (pos, bar_rect.centery), thumb_r, 2)
             # year label above bar (use smaller YEAR_FONT if available)
             try:
-                year_surf = YEAR_FONT.render(str(self.year), True, (20,20,20))
+                year_surf = YEAR_FONT.render(str(self.year), True, (255,255,255))
             except Exception:
-                year_surf = font.render(str(self.year), True, (20,20,20))
-            ys = year_surf.get_rect(center=(pos, bar_rect.y - 14))
-            surface.blit(year_surf, ys)
+                year_surf = font.render(str(self.year), True, (255,255,255))
+            # place year label flush with the left end of the slider bar
+            bg_margin = 6
+            # left end x coordinate of the bar
+            left_x = bar_rect.x
+            # compute background rect positioned to the immediate left of the bar,
+            # vertically centered with the bar
+            bg_w = year_surf.get_width() + bg_margin*2
+            bg_h = year_surf.get_height() + bg_margin*2
+            gap = 6
+            bg_x = left_x - bg_w - gap
+            bg_y = bar_rect.centery - (bg_h // 2)
+            bg_rect = pygame.Rect(bg_x, bg_y, bg_w, bg_h)
+            pygame.draw.rect(surface, (0,0,0), bg_rect)
+            # blit year text inside the square
+            text_x = bg_x + bg_margin
+            text_y = bg_y + bg_margin
+            surface.blit(year_surf, (text_x, text_y))
+            # blit year text inside the black square with margin
+            text_x = bg_x + bg_margin
+            text_y = bg_y + bg_margin
+            surface.blit(year_surf, (text_x, text_y))
 
     # instantiate year slider and place it bottom-center
     slider_w = int(WIDTH * 0.4)
@@ -172,6 +216,22 @@ def main():
     slider_y = HEIGHT - slider_h - 24
     year_slider = YearSlider((slider_x, slider_y, slider_w, slider_h), 1884, 2025, 2025)
 
+    # Animation background state (if animationtest is available)
+    animation_enabled = animationtest is not None
+    anim_frame_time = 0.0
+    anim_font = None
+    anim_surface = None
+    anim_char_w = anim_char_h = None
+    rainfall_by_year = None
+    # try loading monthlyElement.xml via viewchart if available
+    try:
+        if load_rainfall_data is not None:
+            xml_path = os.path.join(os.path.dirname(__file__), 'monthlyElement.xml')
+            if os.path.exists(xml_path):
+                years_list, rainfall_list = load_rainfall_data(xml_path)
+                rainfall_by_year = {str(y): vals for y, vals in zip(years_list, rainfall_list)}
+    except Exception:
+        rainfall_by_year = None
     
 
     class OverlayButton:
@@ -346,7 +406,7 @@ def main():
         # place chart button above the reload button
         btn_chart.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y - (btn_size + spacing), btn_size, btn_size)
         
-        # Draw background - TSX background if available, otherwise solid color
+        # Draw background - TSX background if available, otherwise animation or solid color
         if tsx_background_surface:
             # Scale TSX background to current window size if needed
             current_w, current_h = screen.get_size()
@@ -356,7 +416,70 @@ def main():
             else:
                 screen.blit(tsx_background_surface, (0, 0))
         else:
-            screen.fill(BG_COLOR)
+            # update animation time
+            if animation_enabled and animationtest is not None:
+                now = time.time()
+                # use FPS_CLOCK to compute dt for smoother timing
+                dt = FPS_CLOCK.get_time() / 1000.0 if FPS_CLOCK else 1.0 / FPS
+                anim_frame_time += dt
+                # prepare font and surface on first use
+                if anim_font is None:
+                    monos = pygame.font.match_font('consolas, courier, monospace')
+                    if monos:
+                        anim_font = pygame.font.Font(monos, animationtest.FONT_SIZE)
+                    else:
+                        anim_font = pygame.font.SysFont('couriernew', animationtest.FONT_SIZE)
+                    sample = anim_font.render('M', True, (255,255,255))
+                    anim_char_w, anim_char_h = sample.get_size()
+                    anim_surface = pygame.Surface((anim_char_w * animationtest.COLS + animationtest.PADDING*2,
+                                                   anim_char_h * animationtest.ROWS + animationtest.PADDING*2))
+                # choose rainfall data for selected year
+                sel_year = str(year_slider.year)
+                if rainfall_by_year and sel_year in rainfall_by_year:
+                    data_for_year = rainfall_by_year[sel_year]
+                else:
+                    data_for_year = getattr(animationtest, 'RAIN_DATA', None)
+                # generate grid
+                try:
+                    grid = animationtest.generate_fluid_pattern(data_for_year, anim_frame_time,
+                                                               cols=animationtest.COLS, rows=animationtest.ROWS,
+                                                               speed_factor=animationtest.SPEED_FACTOR,
+                                                               base_scale=animationtest.BASE_TIME_SCALE)
+                except Exception:
+                    grid = None
+                # render to anim_surface
+                if anim_surface and anim_char_w is not None and anim_char_h is not None:
+                    anim_surface.fill(animationtest.BG_COLOR if hasattr(animationtest, 'BG_COLOR') else (0,0,0))
+                    if grid:
+                        for row_idx, row in enumerate(grid):
+                            y = animationtest.PADDING + row_idx * anim_char_h
+                            base = animationtest.row_base_color(row_idx, animationtest.ROWS,
+                                                               top_whiten=animationtest.TOP_WHITEN_BIAS,
+                                                               bottom_boost=animationtest.BOTTOM_WHITEN_BOOST)
+                            for col_idx, (ch, norm) in enumerate(row):
+                                col_mod = (math.sin((anim_frame_time * 1.2) + col_idx * 0.12) + 1) / 2
+                                seed = (row_idx * 1315423911) ^ (col_idx * 2654435761)
+                                phase = (seed % 1000) / 1000.0
+                                white_osc = (math.sin(anim_frame_time * 1.5 + phase * 6.28318) + 1) / 2
+                                white_factor = (white_osc ** 3) * 0.9
+                                sparsity = ((seed >> 3) & 31) / 31.0
+                                white_factor = white_factor * (sparsity * 0.8)
+                                color = animationtest.final_cell_color(base, norm, row_idx, animationtest.ROWS,
+                                                                       time_mod=col_mod, white_factor=white_factor)
+                                surf = anim_font.render(ch, True, color)
+                                x = animationtest.PADDING + col_idx * anim_char_w
+                                anim_surface.blit(surf, (x, y))
+                    # scale and blit
+                    try:
+                        cur_w, cur_h = screen.get_size()
+                        scaled = pygame.transform.smoothscale(anim_surface, (cur_w, cur_h))
+                        screen.blit(scaled, (0,0))
+                    except Exception:
+                        screen.blit(anim_surface, (0,0))
+                else:
+                    screen.fill(BG_COLOR)
+            else:
+                screen.fill(BG_COLOR)
         
         # Draw a rounded rectangle frame (panel) in the lower left. If a pre-rendered
         # chart for the selected year exists, size the panel to match the chart aspect
