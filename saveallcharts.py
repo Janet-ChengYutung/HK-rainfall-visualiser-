@@ -1,4 +1,4 @@
-from datachart import load_rainfall_data, plot_rainfall_for_year
+from downloadchart import load_rainfall_data, plot_rainfall_for_year
 import os
 import matplotlib.pyplot as plt
 
