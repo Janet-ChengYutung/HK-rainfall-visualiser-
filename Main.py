@@ -4,7 +4,6 @@ import sys
 import math
 import os
 import time
-from tsx_background_renderer import create_tsx_background
 
 # ---------- Image Button Class ----------
 class ImageButton:
@@ -90,10 +89,14 @@ def main():
     if os.path.exists(font_path):
         try:
             UI_FONT = pygame.font.Font(font_path, 20)
+            # smaller font for year label above the slider
+            YEAR_FONT = pygame.font.Font(font_path, 14)
         except Exception:
             UI_FONT = pygame.font.SysFont(None, 20)
+            YEAR_FONT = pygame.font.SysFont(None, 14)
     else:
         UI_FONT = pygame.font.SysFont(None, 20)
+        YEAR_FONT = pygame.font.SysFont(None, 14)
 
     # Year slider widget (minimalist)
     class YearSlider:
@@ -154,8 +157,11 @@ def main():
             thumb_r = 10
             pygame.draw.circle(surface, (255,255,255), (pos, bar_rect.centery), thumb_r)
             pygame.draw.circle(surface, (100,120,140), (pos, bar_rect.centery), thumb_r, 2)
-            # year label above bar
-            year_surf = font.render(str(self.year), True, (20,20,20))
+            # year label above bar (use smaller YEAR_FONT if available)
+            try:
+                year_surf = YEAR_FONT.render(str(self.year), True, (20,20,20))
+            except Exception:
+                year_surf = font.render(str(self.year), True, (20,20,20))
             ys = year_surf.get_rect(center=(pos, bar_rect.y - 14))
             surface.blit(year_surf, ys)
 
@@ -165,6 +171,8 @@ def main():
     slider_x = (WIDTH - slider_w) // 2
     slider_y = HEIGHT - slider_h - 24
     year_slider = YearSlider((slider_x, slider_y, slider_w, slider_h), 1884, 2025, 2025)
+
+    
 
     class OverlayButton:
         def __init__(self, rect, icon_normal, icon_pressed=None, callback=None, toggle=False):
@@ -323,6 +331,7 @@ def main():
             btn_reload.handle_event(event)
             btn_chart.handle_event(event)
             year_slider.handle_event(event)
+            
 
         w, h = screen.get_size()
         inner = layout(w, h)
@@ -348,6 +357,7 @@ def main():
                 screen.blit(tsx_background_surface, (0, 0))
         else:
             screen.fill(BG_COLOR)
+        
         # Draw a rounded rectangle frame (panel) in the lower left. If a pre-rendered
         # chart for the selected year exists, size the panel to match the chart aspect
         # ratio while fitting within a maximum area.
