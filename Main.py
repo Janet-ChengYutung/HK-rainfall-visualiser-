@@ -85,12 +85,24 @@ def main():
             self.icon_pressed = icon_pressed if icon_pressed is not None else icon_normal
             self.down = False
             self.callback = callback
+            # default flag for reload button sizing; can be toggled externally
+            self.is_reload = False
 
         def draw(self, surface):
             # Draw button background (on or off)
             bg = button_off if self.down else button_on
-            bg_scaled = pygame.transform.smoothscale(bg, (self.rect.width, self.rect.height))
-            surface.blit(bg_scaled, (self.rect.x, self.rect.y))
+            # If pressed, draw the background slightly smaller and 3px higher.
+            if self.down:
+                # shrink by a few pixels so the change is subtle
+                new_w = max(1, self.rect.width - 6)
+                new_h = max(1, self.rect.height - 6)
+                bg_scaled = pygame.transform.smoothscale(bg, (new_w, new_h))
+                bg_x = self.rect.x + (self.rect.width - new_w) // 2
+                bg_y = self.rect.y + (self.rect.height - new_h) // 2 - 3  # raise by 3px
+                surface.blit(bg_scaled, (bg_x, bg_y))
+            else:
+                bg_scaled = pygame.transform.smoothscale(bg, (self.rect.width, self.rect.height))
+                surface.blit(bg_scaled, (self.rect.x, self.rect.y))
             # Draw icon centered, keep original aspect ratio, fit within 40% of button size
             icon = self.icon_pressed if self.down else self.icon_normal
             # Make reload icon slightly larger (45% of button size), others 40%
@@ -105,8 +117,14 @@ def main():
             new_w = int(iw * scale)
             new_h = int(ih * scale)
             icon_scaled = pygame.transform.smoothscale(icon, (new_w, new_h))
+            # Keep the icon centered in the original button rect.
+            # When pressed, move the icon 3px lower to give a pressed-in effect.
             icon_x = self.rect.x + (self.rect.width - new_w) // 2
-            icon_y = self.rect.y + (self.rect.height - new_h) // 2 - 3  # Move icon 3px higher
+            # Default: unpressed icons should be 3px higher
+            icon_y = self.rect.y + (self.rect.height - new_h) // 2 - 3
+            # When pressed, move the icon down 3px (so it returns to centered)
+            if self.down:
+                icon_y += 3
             surface.blit(icon_scaled, (icon_x, icon_y))
 
         def handle_event(self, event):
