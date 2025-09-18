@@ -77,22 +77,32 @@ def main():
     icon_stop_black = pygame.image.load(os.path.join(ICON_BASE_PATH, "stop_black.png")).convert_alpha()
     icon_stop_red = pygame.image.load(os.path.join(ICON_BASE_PATH, "stop_red.png")).convert_alpha()
     icon_reload_black = pygame.image.load(os.path.join(ICON_BASE_PATH, "reload_black.png")).convert_alpha()
+    # Chart icons for the new button (chart_off -> chart_on when pressed)
+    icon_chart_off = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_off.png")).convert_alpha()
+    icon_chart_on = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_on.png")).convert_alpha()
 
     class OverlayButton:
-        def __init__(self, rect, icon_normal, icon_pressed=None, callback=None):
+        def __init__(self, rect, icon_normal, icon_pressed=None, callback=None, toggle=False):
             self.rect = pygame.Rect(rect)
             self.icon_normal = icon_normal
             self.icon_pressed = icon_pressed if icon_pressed is not None else icon_normal
             self.down = False
             self.callback = callback
+            # whether this button toggles (sticky) on click
+            self.toggle = toggle
+            # persistent toggle state for toggle buttons
+            self.toggled = False
             # default flag for reload button sizing; can be toggled externally
             self.is_reload = False
 
         def draw(self, surface):
+            # Determine the effective pressed state: for toggle buttons use persistent
+            # `toggled`, otherwise use transient `down`.
+            effective_down = self.toggled if self.toggle else self.down
             # Draw button background (on or off)
-            bg = button_off if self.down else button_on
-            # If pressed, draw the background slightly smaller and 3px higher.
-            if self.down:
+            bg = button_off if effective_down else button_on
+            # If pressed (either transient or persistent), draw the background slightly smaller and 3px higher.
+            if effective_down:
                 # shrink by a few pixels so the change is subtle
                 new_w = max(1, self.rect.width - 6)
                 new_h = max(1, self.rect.height - 6)
@@ -104,7 +114,7 @@ def main():
                 bg_scaled = pygame.transform.smoothscale(bg, (self.rect.width, self.rect.height))
                 surface.blit(bg_scaled, (self.rect.x, self.rect.y))
             # Draw icon centered, keep original aspect ratio, fit within 40% of button size
-            icon = self.icon_pressed if self.down else self.icon_normal
+            icon = self.icon_pressed if effective_down else self.icon_normal
             # Make reload icon slightly larger (45% of button size), others 40%
             if getattr(self, 'is_reload', False):
                 icon_scale_factor = 0.45
@@ -122,24 +132,35 @@ def main():
             icon_x = self.rect.x + (self.rect.width - new_w) // 2
             # Default: unpressed icons should be 3px higher
             icon_y = self.rect.y + (self.rect.height - new_h) // 2 - 3
-            # When pressed, move the icon down 3px (so it returns to centered)
-            if self.down:
+            # When pressed (either transient or persistent), move the icon down 3px
+            # (so for toggles the icon appears pressed while toggled on)
+            if effective_down:
                 icon_y += 3
             surface.blit(icon_scaled, (icon_x, icon_y))
 
         def handle_event(self, event):
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if self.rect.collidepoint(event.pos):
+                    # show visual pressed state on mouse down for momentary and toggle buttons
                     self.down = True
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 if self.down and self.rect.collidepoint(event.pos):
+                    if self.toggle:
+                        # flip persistent toggle state
+                        self.toggled = not self.toggled
+                        # align transient visual with persistent state
+                        self.down = self.toggled
                     if self.callback:
                         self.callback(self)
-                self.down = False
+                # clear transient pressed state for non-toggle buttons
+                if not self.toggle:
+                    self.down = False
 
     btn_start = OverlayButton((0,0,80,80), icon_start_black, icon_start_green)
     btn_stop = OverlayButton((0,0,80,80), icon_stop_black, icon_stop_red)
     btn_reload = OverlayButton((0,0,80,80), icon_reload_black)
+    # New chart button placed above the reload button (toggle)
+    btn_chart = OverlayButton((0,0,80,80), icon_chart_off, icon_chart_on, toggle=True)
     btn_reload.is_reload = True  # Mark this button as reload for larger icon
 
     def on_start(btn):
@@ -148,10 +169,13 @@ def main():
         print("Stop button clicked")
     def on_reload(btn):
         print("Reload button clicked")
+    def on_chart(btn):
+        print("Chart button clicked")
 
     btn_start.callback = on_start
     btn_stop.callback = on_stop
     btn_reload.callback = on_reload
+    btn_chart.callback = on_chart
 
 
     def layout(window_w, window_h):
@@ -171,6 +195,7 @@ def main():
             btn_start.handle_event(event)
             btn_stop.handle_event(event)
             btn_reload.handle_event(event)
+            btn_chart.handle_event(event)
 
         w, h = screen.get_size()
         inner = layout(w, h)
@@ -182,6 +207,8 @@ def main():
         btn_start.rect = pygame.Rect(base_x, base_y, btn_size, btn_size)
         btn_stop.rect = pygame.Rect(base_x + btn_size + spacing, base_y, btn_size, btn_size)
         btn_reload.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y, btn_size, btn_size)
+        # place chart button above the reload button
+        btn_chart.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y - (btn_size + spacing), btn_size, btn_size)
         screen.fill(BG_COLOR)
         # Draw a rounded rectangle frame (panel) in the lower left, similar to the screenshot
         panel_w = int(WIDTH * 0.28)
@@ -192,6 +219,7 @@ def main():
         btn_start.draw(screen)
         btn_stop.draw(screen)
         btn_reload.draw(screen)
+        btn_chart.draw(screen)
         pygame.display.flip()
         FPS_CLOCK.tick(FPS)
 
