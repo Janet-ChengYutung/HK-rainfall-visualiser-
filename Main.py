@@ -4,6 +4,7 @@ import sys
 import math
 import os
 import time
+from tsx_background_renderer import create_tsx_background
 
 # ---------- Image Button Class ----------
 class ImageButton:
@@ -42,7 +43,10 @@ PANEL_BORDER_RADIUS = 18
 PLACEHOLDER_COLOR = (230, 230, 230)
 
 # Where your icon PNG files live (update to your path)
-ICON_BASE_PATH = "/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/image"
+ICON_BASE_PATH = os.path.join(os.path.dirname(__file__), "image")
+
+# Path to TSX background file (set to None to disable TSX background)
+TSX_BACKGROUND_PATH = os.path.join(os.path.dirname(__file__), "animation.tsx")  # or None to use default solid color background
 
 # Optional: path to a TTF/OTF font file (Google Sans or another). If None or not found, system font used.
 # Example: "/Users/janet/Downloads/fonts/GoogleSans-Regular.ttf"
@@ -270,11 +274,28 @@ def main():
     running = True
     # cache loaded yearly chart images to avoid repeated disk IO
     chart_image_cache = {}
+    # TSX background surface cache
+    tsx_background_surface = None
     # chart drag-and-drop state
     chart_pos = None  # (x,y) where the chart is drawn; preserved across frames
     chart_dragging = False
     chart_drag_offset = (0, 0)
     last_chart_rect = None  # pygame.Rect of last drawn chart (for hit testing)
+    
+    # Load TSX background if specified
+    if TSX_BACKGROUND_PATH and os.path.exists(TSX_BACKGROUND_PATH):
+        print(f"Loading TSX background from: {TSX_BACKGROUND_PATH}")
+        try:
+            tsx_background_surface = create_tsx_background(TSX_BACKGROUND_PATH, WIDTH, HEIGHT)
+            if tsx_background_surface:
+                print("TSX background loaded successfully!")
+            else:
+                print("Failed to load TSX background, using default background")
+        except Exception as e:
+            print(f"Error loading TSX background: {e}")
+    elif TSX_BACKGROUND_PATH:
+        print(f"TSX background file not found: {TSX_BACKGROUND_PATH}")
+    
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -315,7 +336,18 @@ def main():
         btn_reload.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y, btn_size, btn_size)
         # place chart button above the reload button
         btn_chart.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y - (btn_size + spacing), btn_size, btn_size)
-        screen.fill(BG_COLOR)
+        
+        # Draw background - TSX background if available, otherwise solid color
+        if tsx_background_surface:
+            # Scale TSX background to current window size if needed
+            current_w, current_h = screen.get_size()
+            if (current_w, current_h) != (WIDTH, HEIGHT):
+                scaled_bg = pygame.transform.smoothscale(tsx_background_surface, (current_w, current_h))
+                screen.blit(scaled_bg, (0, 0))
+            else:
+                screen.blit(tsx_background_surface, (0, 0))
+        else:
+            screen.fill(BG_COLOR)
         # Draw a rounded rectangle frame (panel) in the lower left. If a pre-rendered
         # chart for the selected year exists, size the panel to match the chart aspect
         # ratio while fitting within a maximum area.
