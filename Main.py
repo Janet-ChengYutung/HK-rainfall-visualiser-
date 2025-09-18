@@ -163,6 +163,7 @@ def main():
     btn_chart = OverlayButton((0,0,80,80), icon_chart_off, icon_chart_on, toggle=True)
     btn_reload.is_reload = True  # Mark this button as reload for larger icon
 
+
     def on_start(btn):
         print("Start button clicked")
     def on_stop(btn):
@@ -170,7 +171,9 @@ def main():
     def on_reload(btn):
         print("Reload button clicked")
     def on_chart(btn):
-        print("Chart button clicked")
+        # Chart button callback: kept for logging. Panel visibility is driven
+        # directly by the button state in the main loop (pressed or toggled).
+        print("Chart button clicked; toggled=" + str(btn.toggled) + ", down=" + str(btn.down))
 
     btn_start.callback = on_start
     btn_stop.callback = on_stop
@@ -215,7 +218,9 @@ def main():
         panel_h = int(HEIGHT * 0.19)
         panel_x = int(WIDTH * 0.047)
         panel_y = int(HEIGHT * 0.75)
-        pygame.draw.rect(screen, PANEL_COLOR, (panel_x, panel_y, panel_w, panel_h), border_radius=PANEL_BORDER_RADIUS)
+        # Show panel while the chart button is pressed (down) or toggled on
+        if btn_chart.toggled or btn_chart.down:
+            pygame.draw.rect(screen, PANEL_COLOR, (panel_x, panel_y, panel_w, panel_h), border_radius=PANEL_BORDER_RADIUS)
         btn_start.draw(screen)
         btn_stop.draw(screen)
         btn_reload.draw(screen)
