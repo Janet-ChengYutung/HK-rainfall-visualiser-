@@ -1,0 +1,60 @@
+name: Build desktop executables
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    name: Build macOS executable
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Run PyInstaller (macOS)
+        run: |
+          pyinstaller Main.py --onefile --noconfirm --windowed \
+            --add-data "image:image" \
+            --add-data "rainfall_charts:rainfall_charts" \
+            --add-data "monthlyElement.xml:." \
+            --add-data "GoogleSansCode-VariableFont_wght.ttf:."
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: dist
+
+  build-windows:
+    name: Build Windows executable
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Run PyInstaller (Windows)
+        shell: cmd
+        run: |
+          pyinstaller Main.py --onefile --noconfirm --windowed ^
+            --add-data "image;image" ^
+            --add-data "rainfall_charts;rainfall_charts" ^
+            --add-data "monthlyElement.xml;." ^
+            --add-data "GoogleSansCode-VariableFont_wght.ttf;."
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: dist

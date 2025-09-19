@@ -42,6 +42,9 @@ You can now use TSX (TypeScript React) files as animated backgrounds!
 
 For detailed instructions, see [README_TSX_BACKGROUND.md](README_TSX_BACKGROUND.md)
 
+### Packaging and running outside VS Code
+If you want to distribute or run the app without VS Code, see `README_PACKAGE.md` for a short guide and helper scripts (`run.sh`, `build_pyinstaller.sh`).
+
 **Example TSX background:**
 ```tsx
 <div style={{

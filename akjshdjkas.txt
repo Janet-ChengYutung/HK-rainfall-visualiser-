@@ -1,1 +1,0 @@
-help me rewrite the readme file. that saying the project is almost done, just need some part to refine. this project viusalize the data of rain rate in hong kong from 1884-2025. and describe the function
