@@ -639,6 +639,8 @@ def main():
                     if last_anim_frame is not None:
                         try:
                             cur_w, cur_h = screen.get_size()
+                            # Always clear screen first to prevent accumulation/duplication
+                            screen.fill(BG_COLOR)
                             # if cached frame is different size, scale it to current window
                             if (last_anim_frame.get_width(), last_anim_frame.get_height()) != (cur_w, cur_h):
                                 screen.blit(pygame.transform.smoothscale(last_anim_frame, (cur_w, cur_h)), (0,0))
@@ -653,6 +655,8 @@ def main():
                 if last_anim_frame is not None:
                     try:
                         cur_w, cur_h = screen.get_size()
+                        # Always clear screen first to prevent accumulation/duplication
+                        screen.fill(BG_COLOR)
                         if (last_anim_frame.get_width(), last_anim_frame.get_height()) != (cur_w, cur_h):
                             screen.blit(pygame.transform.smoothscale(last_anim_frame, (cur_w, cur_h)), (0,0))
                         else:
