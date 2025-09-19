@@ -309,8 +309,10 @@ def main():
                 if not self.toggle:
                     self.down = False
 
-    btn_start = OverlayButton((0,0,80,80), icon_start_black, icon_start_green)
-    btn_stop = OverlayButton((0,0,80,80), icon_stop_black, icon_stop_red)
+    # Make start/stop toggle buttons so their visual state reflects running/stopped
+    btn_start = OverlayButton((0,0,80,80), icon_start_black, icon_start_green, toggle=True)
+    btn_stop = OverlayButton((0,0,80,80), icon_stop_black, icon_stop_red, toggle=True)
+    # reload is momentary
     btn_reload = OverlayButton((0,0,80,80), icon_reload_black)
     # New chart button placed above the reload button (toggle)
     btn_chart = OverlayButton((0,0,80,80), icon_chart_off, icon_chart_on, toggle=True)
@@ -318,11 +320,50 @@ def main():
 
 
     def on_start(btn):
-        print("Start button clicked")
+        # start the animation
+        nonlocal_vars = []
+        try:
+            nonlocal animation_enabled, btn_start, btn_stop
+        except SyntaxError:
+            # Python 3.7+ supports nonlocal; guard in case of older versions
+            pass
+        animation_enabled = True
+        # update visual toggles
+        btn_start.toggled = True
+        btn_stop.toggled = False
+        print("Start button clicked; animation enabled")
+
     def on_stop(btn):
-        print("Stop button clicked")
+        # stop the animation (pause)
+        try:
+            nonlocal animation_enabled, btn_start, btn_stop
+        except SyntaxError:
+            pass
+        animation_enabled = False
+        btn_start.toggled = False
+        btn_stop.toggled = True
+        print("Stop button clicked; animation disabled")
+
     def on_reload(btn):
-        print("Reload button clicked")
+        # reset animation state so it restarts from initial frame
+        try:
+            nonlocal anim_frame_time, anim_surface, anim_font, anim_char_w, anim_char_h, rainfall_by_year
+        except SyntaxError:
+            pass
+        anim_frame_time = 0.0
+        anim_surface = None
+        anim_font = None
+        anim_char_w = anim_char_h = None
+        # attempt to re-load rainfall data if loader is available
+        try:
+            if load_rainfall_data is not None:
+                xml_path = os.path.join(os.path.dirname(__file__), 'monthlyElement.xml')
+                if os.path.exists(xml_path):
+                    years_list, rainfall_list = load_rainfall_data(xml_path)
+                    rainfall_by_year = {str(y): vals for y, vals in zip(years_list, rainfall_list)}
+        except Exception:
+            rainfall_by_year = rainfall_by_year
+        print("Reload button clicked; animation reset")
     def on_chart(btn):
         # Chart button callback: kept for logging. Panel visibility is driven
         # directly by the button state in the main loop (pressed or toggled).
@@ -344,6 +385,8 @@ def main():
     chart_image_cache = {}
     # TSX background surface cache
     tsx_background_surface = None
+    # cache last scaled animation frame so we can freeze it when paused
+    last_anim_frame = None
     # chart drag-and-drop state
     chart_pos = None  # (x,y) where the chart is drawn; preserved across frames
     chart_dragging = False
@@ -469,17 +512,45 @@ def main():
                                 surf = anim_font.render(ch, True, color)
                                 x = animationtest.PADDING + col_idx * anim_char_w
                                 anim_surface.blit(surf, (x, y))
-                    # scale and blit
+                    # scale and blit (also cache the scaled frame so we can show it when paused)
                     try:
                         cur_w, cur_h = screen.get_size()
                         scaled = pygame.transform.smoothscale(anim_surface, (cur_w, cur_h))
                         screen.blit(scaled, (0,0))
+                        last_anim_frame = scaled.copy()
                     except Exception:
                         screen.blit(anim_surface, (0,0))
+                        try:
+                            last_anim_frame = anim_surface.copy()
+                        except Exception:
+                            last_anim_frame = None
+                else:
+                    # if we have a cached last frame, show it (freeze); otherwise fallback to BG
+                    if last_anim_frame is not None:
+                        try:
+                            cur_w, cur_h = screen.get_size()
+                            # if cached frame is different size, scale it to current window
+                            if (last_anim_frame.get_width(), last_anim_frame.get_height()) != (cur_w, cur_h):
+                                screen.blit(pygame.transform.smoothscale(last_anim_frame, (cur_w, cur_h)), (0,0))
+                            else:
+                                screen.blit(last_anim_frame, (0,0))
+                        except Exception:
+                            screen.fill(BG_COLOR)
+                    else:
+                        screen.fill(BG_COLOR)
+            else:
+                # animation disabled: keep last frame visible (freeze) if present
+                if last_anim_frame is not None:
+                    try:
+                        cur_w, cur_h = screen.get_size()
+                        if (last_anim_frame.get_width(), last_anim_frame.get_height()) != (cur_w, cur_h):
+                            screen.blit(pygame.transform.smoothscale(last_anim_frame, (cur_w, cur_h)), (0,0))
+                        else:
+                            screen.blit(last_anim_frame, (0,0))
+                    except Exception:
+                        screen.fill(BG_COLOR)
                 else:
                     screen.fill(BG_COLOR)
-            else:
-                screen.fill(BG_COLOR)
         
         # Draw a rounded rectangle frame (panel) in the lower left. If a pre-rendered
         # chart for the selected year exists, size the panel to match the chart aspect
