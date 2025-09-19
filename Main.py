@@ -232,6 +232,31 @@ def main():
                 rainfall_by_year = {str(y): vals for y, vals in zip(years_list, rainfall_list)}
     except Exception:
         rainfall_by_year = None
+    # Audio: load rain sound (best-effort) and setup per-month volume control
+    rain_sound_path = os.path.join(os.path.dirname(__file__), 'rain_sound.mp3')
+    music_available = False
+    # compute per-year min/max monthly values for normalization
+    per_year_month_minmax = {}
+    try:
+        if rainfall_by_year:
+            for y, vals in rainfall_by_year.items():
+                if vals:
+                    per_year_month_minmax[y] = (min(vals), max(vals))
+    except Exception:
+        per_year_month_minmax = {}
+    try:
+        pygame.mixer.init()
+        if os.path.exists(rain_sound_path):
+            try:
+                pygame.mixer.music.load(rain_sound_path)
+                pygame.mixer.music.play(-1)
+                music_available = True
+            except Exception:
+                music_available = False
+        else:
+            music_available = False
+    except Exception:
+        music_available = False
     
 
     class OverlayButton:
@@ -243,6 +268,8 @@ def main():
             self.callback = callback
             # whether this button toggles (sticky) on click
             self.toggle = toggle
+            # whether the button is enabled (clickable)
+            self.enabled = True
             # persistent toggle state for toggle buttons
             self.toggled = False
             # default flag for reload button sizing; can be toggled externally
@@ -266,6 +293,13 @@ def main():
             else:
                 bg_scaled = pygame.transform.smoothscale(bg, (self.rect.width, self.rect.height))
                 surface.blit(bg_scaled, (self.rect.x, self.rect.y))
+            # If disabled, draw a dimmed background/icon to indicate locked state
+            if not getattr(self, 'enabled', True):
+                # draw a slightly darker overlay on top of button background
+                overlay = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
+                overlay.fill((0,0,0,120))
+                surface.blit(overlay, (self.rect.x, self.rect.y))
+
             # Draw icon centered, keep original aspect ratio, fit within 40% of button size
             icon = self.icon_pressed if effective_down else self.icon_normal
             # Make reload icon slightly larger (45% of button size), others 40%
@@ -292,6 +326,9 @@ def main():
             surface.blit(icon_scaled, (icon_x, icon_y))
 
         def handle_event(self, event):
+            # Ignore interactions when disabled
+            if not getattr(self, 'enabled', True):
+                return
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if self.rect.collidepoint(event.pos):
                     # show visual pressed state on mouse down for momentary and toggle buttons
@@ -321,28 +358,51 @@ def main():
 
     def on_start(btn):
         # start the animation
-        nonlocal_vars = []
         try:
-            nonlocal animation_enabled, btn_start, btn_stop
+            nonlocal animation_enabled, btn_start, btn_stop, btn_chart
         except SyntaxError:
-            # Python 3.7+ supports nonlocal; guard in case of older versions
             pass
         animation_enabled = True
         # update visual toggles
         btn_start.toggled = True
         btn_stop.toggled = False
+        # enable chart button (unlock)
+        try:
+            btn_chart.enabled = True
+        except Exception:
+            pass
+        # resume music (best-effort)
+        try:
+            pygame.mixer.music.unpause()
+        except Exception:
+            pass
         print("Start button clicked; animation enabled")
 
     def on_stop(btn):
         # stop the animation (pause)
         try:
-            nonlocal animation_enabled, btn_start, btn_stop
+            nonlocal animation_enabled, btn_start, btn_stop, btn_chart, chart_pos, chart_dragging, last_chart_rect
         except SyntaxError:
             pass
         animation_enabled = False
         btn_start.toggled = False
         btn_stop.toggled = True
-        print("Stop button clicked; animation disabled")
+        # Disable (lock) the chart button and clear transient chart state
+        try:
+            btn_chart.enabled = False
+            btn_chart.toggled = False
+            btn_chart.down = False
+            chart_pos = None
+            chart_dragging = False
+            last_chart_rect = None
+        except Exception:
+            pass
+        # pause music (best-effort)
+        try:
+            pygame.mixer.music.pause()
+        except Exception:
+            pass
+        print("Stop button clicked; animation disabled and chart locked/closed")
 
     def on_reload(btn):
         # reset animation state so it restarts from initial frame
@@ -387,6 +447,14 @@ def main():
     tsx_background_surface = None
     # cache last scaled animation frame so we can freeze it when paused
     last_anim_frame = None
+    # music month cycling state: which month index (0..11) is currently driving volume
+    music_month_index = 0
+    # seconds per month step (controls how fast the music volume cycles through months)
+    MUSIC_MONTH_STEP = 0.8
+    music_month_time_acc = 0.0
+    # smooth volume state
+    MUSIC_VOLUME_SMOOTHING = 0.6  # smaller = slower smoothing (per-second rate); lower value gives longer fades
+    current_music_volume = 0.35
     # chart drag-and-drop state
     chart_pos = None  # (x,y) where the chart is drawn; preserved across frames
     chart_dragging = False
@@ -482,6 +550,48 @@ def main():
                     data_for_year = rainfall_by_year[sel_year]
                 else:
                     data_for_year = getattr(animationtest, 'RAIN_DATA', None)
+                # Update music month timer and set volume based on monthly rainfall
+                try:
+                    if music_available and data_for_year:
+                        # advance month time accumulator
+                        music_month_time_acc += dt
+                        while music_month_time_acc >= MUSIC_MONTH_STEP:
+                            music_month_time_acc -= MUSIC_MONTH_STEP
+                            music_month_index = (music_month_index + 1) % 12
+                        # pick month index and value (wrap if data shorter)
+                        if len(data_for_year) >= 12:
+                            month_val = float(data_for_year[music_month_index % 12])
+                        else:
+                            # if data_for_year is a yearly mean or shorter, fallback to mean
+                            try:
+                                month_val = float(sum(data_for_year) / max(1, len(data_for_year)))
+                            except Exception:
+                                month_val = 0.0
+                        # normalize month_val to 0..1 using per-year min/max if available
+                        vol = 0.35
+                        try:
+                            if sel_year in per_year_month_minmax:
+                                lo, hi = per_year_month_minmax[sel_year]
+                                if hi > lo:
+                                    t = (month_val - lo) / (hi - lo)
+                                else:
+                                    t = 0.0
+                            else:
+                                t = 0.0
+                        except Exception:
+                            t = 0.0
+                        # curve and map to audible range
+                        t = max(0.0, min(1.0, t))
+                        target_vol = 0.05 + (t ** 0.9) * 0.95
+                        # smooth toward target_vol using exponential smoothing
+                        try:
+                            alpha = 1.0 - math.exp(-MUSIC_VOLUME_SMOOTHING * dt)
+                        except Exception:
+                            alpha = 0.25
+                        current_music_volume = (1.0 - alpha) * current_music_volume + alpha * target_vol
+                        pygame.mixer.music.set_volume(max(0.0, min(1.0, current_music_volume)))
+                except Exception:
+                    pass
                 # generate grid
                 try:
                     grid = animationtest.generate_fluid_pattern(data_for_year, anim_frame_time,
