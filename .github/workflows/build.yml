@@ -28,11 +28,21 @@ jobs:
             --add-data "image:image" \
             --add-data "data/monthlyElement.xml:." \
             --add-data "GoogleSansCode-VariableFont_wght.ttf:."
+      - name: Prepare release files (macOS)
+        run: |
+          mkdir -p release
+          # Keep the one-file executable separately and create an assets zip
+          if [ -f dist/Main ]; then
+            mv dist/Main release/HK_Rainfall_Visualiser_mac_executable
+          fi
+          # include only runtime assets
+          zip -r release/HK_Rainfall_Visualiser_mac_assets.zip image data GoogleSansCode-VariableFont_wght.ttf
+          ls -la release
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: HK_Rainfall_Visualiser_mac
-          path: dist
+          path: release
 
   build-windows:
     name: Build Windows executable
@@ -52,13 +62,20 @@ jobs:
         run: |
           pyinstaller Main.py --onefile --noconfirm --windowed ^
             --add-data "image;image" ^
-              --add-data "data/monthlyElement.xml;." ^
-              --add-data "GoogleSansCode-VariableFont_wght.ttf;."
+            --add-data "data/monthlyElement.xml;." ^
+            --add-data "GoogleSansCode-VariableFont_wght.ttf;."
+      - name: Prepare release files (Windows)
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          if (Test-Path dist\Main.exe) { Copy-Item -Path dist\Main.exe -Destination release\HK_Rainfall_Visualiser_win_executable.exe -Force }
+          Compress-Archive -Path image, data, GoogleSansCode-VariableFont_wght.ttf -DestinationPath release\HK_Rainfall_Visualiser_win_assets.zip -Force
+          Get-ChildItem -Path release | Format-List
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: HK_Rainfall_Visualiser_win
-          path: dist
+          path: release
 
   publish-release:
     name: Publish release with artifacts
