@@ -172,7 +172,7 @@ def main():
                     self.dragging = False
 
         def draw(self, surface, font):
-            # bar background
+            # draw slider and year label
             bar_h = 8
             bar_rect = pygame.Rect(self.rect.x, self.rect.y + (self.rect.height - bar_h)//2, self.rect.width, bar_h)
             pygame.draw.rect(surface, (200,200,200), bar_rect, border_radius=4)
@@ -284,6 +284,8 @@ def main():
             self.toggled = False
             # default flag for reload button sizing; can be toggled externally
             self.is_reload = False
+            # timestamp of last toggle to debounce rapid clicks
+            self.last_toggle_time = 0.0
 
         def draw(self, surface):
             # Determine the effective pressed state: for toggle buttons use persistent
@@ -346,8 +348,18 @@ def main():
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 if self.down and self.rect.collidepoint(event.pos):
                     if self.toggle:
+                        nowt = time.time()
+                        # debounce toggles (ignore if too fast)
+                        try:
+                            if (nowt - self.last_toggle_time) < 0.25:
+                                # ignore this toggle
+                                self.down = False
+                                return
+                        except Exception:
+                            pass
                         # flip persistent toggle state
                         self.toggled = not self.toggled
+                        self.last_toggle_time = nowt
                         # align transient visual with persistent state
                         self.down = self.toggled
                     if self.callback:
@@ -372,10 +384,10 @@ def main():
     external_chart_open_time = None
     external_chart_block_autoclose = False
     external_chart_checker_thread = None
-    external_chart_seen_closed = False
+    # per-button debounce handled by OverlayButton.last_toggle_time
 
     def open_file(path):
-        """Open a file using platform-appropriate command (non-blocking where possible)."""
+        """Open a file using system command."""
         try:
             if sys.platform == 'darwin':
                 subprocess.Popen(['open', path])
@@ -388,9 +400,7 @@ def main():
             pass
 
     def close_external_chart():
-        """Close the external chart viewer (best-effort). Removes temp file if created.
-        On macOS this asks Preview to close documents with the same basename.
-        """
+        """Best-effort close of external viewer and temp-file cleanup."""
         try:
             nonlocal external_chart_path, chart_temp_file, external_chart_opened, external_chart_open_time, external_chart_block_autoclose
         except SyntaxError:
@@ -408,6 +418,10 @@ def main():
                 external_chart_opened = False
                 external_chart_open_time = None
                 external_chart_block_autoclose = False
+                try:
+                    btn_chart.toggled = False
+                except Exception:
+                    pass
         except Exception:
             pass
         try:
@@ -421,7 +435,7 @@ def main():
     external_chart_block_autoclose = False
 
     def is_preview_document_open(fname):
-        """Return True if Preview currently has a document with name `fname` open (macOS only)."""
+        """Return True if Preview has `fname` open (macOS only)."""
         try:
             if sys.platform != 'darwin':
                 return False
@@ -485,16 +499,9 @@ def main():
         animation_enabled = False
         btn_start.toggled = False
         btn_stop.toggled = True
-        # Disable (lock) the chart button and clear transient chart state
+        # Keep chart button enabled so user can open/inspect chart while animation is stopped
         try:
-            btn_chart.enabled = False
-            btn_chart.toggled = False
-            btn_chart.down = False
-            chart_pos = None
             chart_dragging = False
-            # hide the chart visually and clear hit testing rect
-            chart_alpha = 0
-            last_chart_rect = None
         except Exception:
             pass
         # pause music (best-effort)
@@ -541,7 +548,6 @@ def main():
             return
         # Otherwise, show chart in-window (panel positioning will be handled in main loop)
         chart_alpha = 255
-        btn.toggled = True  # Ensure the chart button remains pressed (we show external viewer only)
         # Try to open an on-disk PNG for the selected year; otherwise dump cached surface to temp PNG
         try:
             chart_year = year_slider.year
@@ -653,17 +659,7 @@ def main():
             year_slider.handle_event(event)
         # Poll external chart viewer: if we opened an external chart and the user closed it,
         # un-toggle the chart button and clean up.
-        try:
-            # Use the background checker flag to detect closure without blocking the main loop
-            if external_chart_opened and external_chart_path and btn_chart.toggled:
-                if external_chart_seen_closed:
-                    btn_chart.toggled = False
-                    try:
-                        close_external_chart()
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+        # No auto-close polling; chart open/close controlled by button only.
         w, h = screen.get_size()
         inner = layout(w, h)
         # centered black square area that hosts the animation
@@ -827,12 +823,7 @@ def main():
                 else:
                     screen.fill(BG_COLOR)
         
-        # Draw a rounded rectangle frame (panel) in the lower left. If a pre-rendered
-        # chart for the selected year exists, size the panel to match the chart aspect
-        # ratio while fitting within a maximum area.
-        # Allow the chart to occupy a larger portion of the window so
-        # high-resolution images are shown nearer to native resolution.
-        # These fractions can be adjusted if you prefer a different max size.
+    # Panel layout (in-window chart rendering removed; charts are external)
         max_panel_w = int(w * 0.45)
         max_panel_h = int(h * 0.60)
         panel_x = int(w * 0.047)
