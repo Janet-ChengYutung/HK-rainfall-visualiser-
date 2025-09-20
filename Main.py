@@ -2,6 +2,8 @@ import pygame
 import pygame.gfxdraw
 import sys
 import math
+import subprocess
+import tempfile
 import os
 import time
 # Safe stub for TSX background loader (project may provide a real loader elsewhere)
@@ -80,7 +82,7 @@ def main():
     # Initialize pygame and display before creating any ImageButton
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
-    pygame.display.set_caption("UI: temporary icon variant + custom font")
+    pygame.display.set_caption("HK Rainfall Visualiser")
 
     # Create three buttons: start, stop, reload (after pygame is initialized)
 
@@ -199,7 +201,15 @@ def main():
             bg_x = left_x - bg_w - gap
             bg_y = bar_rect.centery - (bg_h // 2)
             bg_rect = pygame.Rect(bg_x, bg_y, bg_w, bg_h)
-            pygame.draw.rect(surface, (0,0,0), bg_rect)
+            # draw a slightly translucent dark rounded card behind the year label
+            try:
+                card = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
+                card.fill((0,0,0,0))
+                pygame.draw.rect(card, (0,0,0,200), (0,0,bg_w,bg_h), border_radius=6)
+                surface.blit(card, (bg_x, bg_y))
+            except Exception:
+                # fallback to solid small dark rectangle if alpha surfaces are unsupported
+                pygame.draw.rect(surface, (30,30,30), bg_rect)
             # blit year text inside the square
             text_x = bg_x + bg_margin
             text_y = bg_y + bg_margin
@@ -355,11 +365,94 @@ def main():
     btn_chart = OverlayButton((0,0,80,80), icon_chart_off, icon_chart_on, toggle=True)
     btn_reload.is_reload = True  # Mark this button as reload for larger icon
 
+    # External chart viewer state
+    external_chart_path = None
+    chart_temp_file = None
+    external_chart_opened = False
+    external_chart_open_time = None
+    external_chart_block_autoclose = False
+    external_chart_checker_thread = None
+    external_chart_seen_closed = False
+
+    def open_file(path):
+        """Open a file using platform-appropriate command (non-blocking where possible)."""
+        try:
+            if sys.platform == 'darwin':
+                subprocess.Popen(['open', path])
+            elif sys.platform.startswith('win'):
+                os.startfile(path)
+            else:
+                # linux/unix
+                subprocess.Popen(['xdg-open', path])
+        except Exception:
+            pass
+
+    def close_external_chart():
+        """Close the external chart viewer (best-effort). Removes temp file if created.
+        On macOS this asks Preview to close documents with the same basename.
+        """
+        try:
+            nonlocal external_chart_path, chart_temp_file, external_chart_opened, external_chart_open_time, external_chart_block_autoclose
+        except SyntaxError:
+            pass
+        try:
+            if external_chart_opened and external_chart_path:
+                if sys.platform == 'darwin':
+                    try:
+                        fname = os.path.basename(external_chart_path)
+                        script = f'tell application "Preview" to close (every document whose name is "{fname}")'
+                        subprocess.Popen(['osascript', '-e', script])
+                    except Exception:
+                        pass
+                # For other platforms we avoid force-closing arbitrary apps
+                external_chart_opened = False
+                external_chart_open_time = None
+                external_chart_block_autoclose = False
+        except Exception:
+            pass
+        try:
+            if chart_temp_file and os.path.exists(chart_temp_file):
+                os.remove(chart_temp_file)
+        except Exception:
+            pass
+    chart_temp_file = None
+    external_chart_path = None
+    external_chart_open_time = None
+    external_chart_block_autoclose = False
+
+    def is_preview_document_open(fname):
+        """Return True if Preview currently has a document with name `fname` open (macOS only)."""
+        try:
+            if sys.platform != 'darwin':
+                return False
+            script = (
+                'tell application "System Events"\n'
+                ' set isRunning to (name of processes) contains "Preview"\n'
+                'end tell\n'
+                'if isRunning then\n'
+                ' tell application "Preview" to return (name of every document as string)\n'
+                'else\n'
+                ' return ""\n'
+                'end if'
+            )
+            proc = subprocess.Popen(['osascript', '-e', script], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out, err = proc.communicate(timeout=0.5)
+            out = out.decode(errors='ignore').strip()
+            if not out:
+                return False
+            names = [n.strip() for n in out.split(',') if n.strip()]
+            return fname in names
+        except Exception:
+            return False
+
+
+    # Removed background preview checker: chart open/close is now controlled only by the UI toggle.
+
 
     def on_start(btn):
         # start the animation
         try:
-            nonlocal animation_enabled, btn_start, btn_stop, btn_chart
+            nonlocal animation_enabled, btn_start, btn_stop, btn_chart, chart_alpha
         except SyntaxError:
             pass
         animation_enabled = True
@@ -369,6 +462,11 @@ def main():
         # enable chart button (unlock)
         try:
             btn_chart.enabled = True
+        except Exception:
+            pass
+        # restore chart visibility when restarting
+        try:
+            chart_alpha = 255
         except Exception:
             pass
         # resume music (best-effort)
@@ -381,7 +479,7 @@ def main():
     def on_stop(btn):
         # stop the animation (pause)
         try:
-            nonlocal animation_enabled, btn_start, btn_stop, btn_chart, chart_pos, chart_dragging, last_chart_rect
+            nonlocal animation_enabled, btn_start, btn_stop, btn_chart, chart_pos, chart_dragging, last_chart_rect, chart_alpha
         except SyntaxError:
             pass
         animation_enabled = False
@@ -394,6 +492,8 @@ def main():
             btn_chart.down = False
             chart_pos = None
             chart_dragging = False
+            # hide the chart visually and clear hit testing rect
+            chart_alpha = 0
             last_chart_rect = None
         except Exception:
             pass
@@ -425,9 +525,56 @@ def main():
             rainfall_by_year = rainfall_by_year
         print("Reload button clicked; animation reset")
     def on_chart(btn):
-        # Chart button callback: kept for logging. Panel visibility is driven
-        # directly by the button state in the main loop (pressed or toggled).
+        # Chart button callback: open/close external chart viewer and prepare in-window panel.
+        try:
+            nonlocal external_chart_path, chart_temp_file, external_chart_opened, chart_pos, chart_alpha, last_chart_rect, external_chart_open_time, external_chart_block_autoclose
+        except Exception:
+            pass
         print("Chart button clicked; toggled=" + str(btn.toggled) + ", down=" + str(btn.down))
+        # If the button was turned off, close external viewer and clear state
+        if not (btn.toggled or btn.down): 
+            last_chart_rect = None  # Clear last_chart_rect to prevent drag interactions
+            try:
+                close_external_chart()
+            except Exception:
+                pass
+            return
+        # Otherwise, show chart in-window (panel positioning will be handled in main loop)
+        chart_alpha = 255
+        btn.toggled = True  # Ensure the chart button remains pressed (we show external viewer only)
+        # Try to open an on-disk PNG for the selected year; otherwise dump cached surface to temp PNG
+        try:
+            chart_year = year_slider.year
+            chart_path = os.path.join(os.path.dirname(__file__), 'rainfall_charts', f'rainfall_{chart_year}.png')
+            if os.path.exists(chart_path):
+                open_file(chart_path)
+                external_chart_path = chart_path
+                external_chart_opened = True
+                external_chart_open_time = time.time()
+                external_chart_block_autoclose = True
+                chart_temp_file = None
+            else:
+                # fallback to cached surface if present
+                surf = chart_image_cache.get(chart_year)
+                if surf is not None:
+                    try:
+                        fd, tmp = tempfile.mkstemp(suffix='.png', prefix=f'rainfall_{chart_year}_')
+                        os.close(fd)
+                        pygame.image.save(surf, tmp)
+                        open_file(tmp)
+                        chart_temp_file = tmp
+                        external_chart_path = tmp
+                        external_chart_opened = True
+                        external_chart_open_time = time.time()
+                        external_chart_block_autoclose = True
+                        # no background checker; rely on manual toggle to close external chart
+                    except Exception:
+                        try:
+                            os.remove(tmp)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
     btn_start.callback = on_start
     btn_stop.callback = on_stop
@@ -460,6 +607,8 @@ def main():
     chart_dragging = False
     chart_drag_offset = (0, 0)
     last_chart_rect = None  # pygame.Rect of last drawn chart (for hit testing)
+    # chart opacity (0..255). When animation is stopped we set to 0 to hide chart.
+    chart_alpha = 255
     
     # Load TSX background if specified
     if TSX_BACKGROUND_PATH and os.path.exists(TSX_BACKGROUND_PATH):
@@ -502,10 +651,26 @@ def main():
             btn_reload.handle_event(event)
             btn_chart.handle_event(event)
             year_slider.handle_event(event)
-            
-
+        # Poll external chart viewer: if we opened an external chart and the user closed it,
+        # un-toggle the chart button and clean up.
+        try:
+            # Use the background checker flag to detect closure without blocking the main loop
+            if external_chart_opened and external_chart_path and btn_chart.toggled:
+                if external_chart_seen_closed:
+                    btn_chart.toggled = False
+                    try:
+                        close_external_chart()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         w, h = screen.get_size()
         inner = layout(w, h)
+        # centered black square area that hosts the animation
+        square_size = int(min(w, h) * 0.60)
+        square_x = (w - square_size) // 2
+        square_y = (h - square_size) // 2
+        square_rect = pygame.Rect(square_x, square_y, square_size, square_size)
         btn_size = max(48, int(min(inner.width, inner.height) * 0.08))
         spacing = int(btn_size * 0.25)
         total_width = btn_size * 3 + spacing * 2
@@ -673,84 +838,8 @@ def main():
         panel_x = int(w * 0.047)
         # default place near bottom with a small bottom margin
         bottom_margin = int(h * 0.04)
-        # Show panel while the chart button is pressed (down) or toggled on
-        if btn_chart.toggled or btn_chart.down:
-            # look for pre-rendered chart image for the selected year
-            chart_year = year_slider.year
-            chart_path = os.path.join(os.path.dirname(__file__), 'rainfall_charts', f'rainfall_{chart_year}.png')
-            img = None
-            if chart_year in chart_image_cache:
-                img = chart_image_cache[chart_year]
-            else:
-                if os.path.exists(chart_path):
-                    try:
-                        loaded = pygame.image.load(chart_path).convert_alpha()
-                        chart_image_cache[chart_year] = loaded
-                        img = loaded
-                    except Exception:
-                        img = None
-            if img is not None:
-                iw, ih = img.get_width(), img.get_height()
-                # enlarge chart by 40% but ensure it fits inside max panel area
-                enlarge_factor = 1.40
-                scale = min(max_panel_w / (iw * enlarge_factor), max_panel_h / (ih * enlarge_factor), 1.0)
-                chart_w = max(1, int(iw * scale * enlarge_factor))
-                chart_h = max(1, int(ih * scale * enlarge_factor))
-                panel_y = h - chart_h - bottom_margin
-                # draw the chart image directly (no panel box), opaque (100% opacity)
-                alpha = 255
-                img_scaled = pygame.transform.smoothscale(img, (chart_w, chart_h)).convert_alpha()
-                img_scaled.set_alpha(alpha)
-                # if the user moved the chart, use chart_pos; otherwise default to panel origin
-                if chart_pos is None:
-                    surface_x = panel_x
-                    surface_y = panel_y
-                    chart_pos = (surface_x, surface_y)
-                else:
-                    surface_x, surface_y = chart_pos
-                screen.blit(img_scaled, (surface_x, surface_y))
-                # remember the rect so we can start dragging from it next frame
-                last_chart_rect = pygame.Rect(int(surface_x), int(surface_y), chart_w, chart_h)
-            else:
-                # fallback to previous placeholder with max size
-                panel_w = max_panel_w
-                panel_h = max_panel_h
-                panel_y = int(HEIGHT * 0.75)
-                # semi-transparent rounded panel background for placeholder (50% opacity)
-                alpha = int(255 * 0.5)
-                radius = max(6, int(PANEL_BORDER_RADIUS * 1.2))
-                panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-                pygame.draw.rect(panel_surf, (PANEL_COLOR[0], PANEL_COLOR[1], PANEL_COLOR[2], alpha), (0, 0, panel_w, panel_h), border_radius=radius)
-                screen.blit(panel_surf, (panel_x, panel_y))
-                # draw placeholder chart inside panel
-                chart_margin = 12
-                cx = panel_x + chart_margin
-                cy = panel_y + chart_margin
-                cw = panel_w - chart_margin*2
-                ch = panel_h - chart_margin*2
-                # background for chart area
-                pygame.draw.rect(screen, (245,245,250), (cx, cy, cw, ch), border_radius=6)
-                # axes
-                ax_x = cx + 30
-                ax_y = cy + ch - 24
-                pygame.draw.line(screen, (180,180,180), (ax_x, cy+6), (ax_x, ax_y), 2)
-                pygame.draw.line(screen, (180,180,180), (ax_x, ax_y), (cx+cw-8, ax_y), 2)
-                # sample data generated from year (to vary visually)
-                samples = 24
-                pts = []
-                seed = year_slider.year % 10
-                for i in range(samples):
-                    t = i / (samples-1)
-                    x = ax_x + int(t * (cw - 48))
-                    # simple wave + seed offset
-                    yval = 0.5 + 0.4 * math.sin(2*math.pi*(t*3 + seed*0.13))
-                    y = int(ax_y - yval * (ch - 48))
-                    pts.append((x,y))
-                if len(pts) > 1:
-                    pygame.draw.lines(screen, (40,120,200), False, pts, 3)
-                # label with the selected year
-                label = UI_FONT.render(f"Year: {year_slider.year}", True, (40,40,40))
-                screen.blit(label, (cx+6, cy+6))
+        # We no longer draw the in-window chart panel. Clear hit-test rect to prevent dragging.
+        last_chart_rect = None
         btn_start.draw(screen)
         btn_stop.draw(screen)
         btn_reload.draw(screen)
