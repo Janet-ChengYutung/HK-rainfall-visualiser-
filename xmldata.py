@@ -5,7 +5,7 @@ def download_xml():
     url = "https://www.hko.gov.hk/cis/individual_month/monthlyElement.xml"
     # Save in the same directory as this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    output_file = os.path.join(script_dir, "monthlyElement.xml")
+    output_file = os.path.join(script_dir, "data", "monthlyElement.xml")
     try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()

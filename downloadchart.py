@@ -117,6 +117,7 @@ def show_and_download_menu(xml_path):
 if __name__ == "__main__":
 	# Interactive terminal menu for viewing and downloading charts
 	try:
-		show_and_download_menu('monthlyElement.xml')
+		xml_path = os.path.join(os.path.dirname(__file__), 'data', 'monthlyElement.xml')
+		show_and_download_menu(xml_path)
 	except Exception as e:
 		print(f"Error: {e}")

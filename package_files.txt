@@ -1,2 +1,4 @@
-This file was consolidated into `combined_texts.txt`.
-See `/combined_texts.txt` for the original `package_files.txt` contents.
+image:image
+rainfall_charts:rainfall_charts
+data/monthlyElement.xml:.
+GoogleSansCode-VariableFont_wght.ttf:.

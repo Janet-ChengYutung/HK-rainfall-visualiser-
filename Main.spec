@@ -5,7 +5,7 @@ a = Analysis(
     ['Main.py'],
     pathex=[],
     binaries=[],
-    datas=[('/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/image', 'image'), ('/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/rainfall_charts', 'rainfall_chart'), ('/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/monthlyElement.xml', '.'), ('/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/GoogleSansCode-VariableFont_wght.ttf', '.')],
+    datas=[('/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/image', 'image'), ('/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/rainfall_charts', 'rainfall_chart'), ('/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/data/monthlyElement.xml', '.'), ('/Users/janet/Downloads/pfad/HK-rainfall-visualiser-/GoogleSansCode-VariableFont_wght.ttf', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

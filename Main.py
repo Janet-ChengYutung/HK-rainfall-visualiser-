@@ -236,14 +236,14 @@ def main():
     # try loading monthlyElement.xml via viewchart if available
     try:
         if load_rainfall_data is not None:
-            xml_path = os.path.join(os.path.dirname(__file__), 'monthlyElement.xml')
+            xml_path = os.path.join(os.path.dirname(__file__), 'data', 'monthlyElement.xml')
             if os.path.exists(xml_path):
                 years_list, rainfall_list = load_rainfall_data(xml_path)
                 rainfall_by_year = {str(y): vals for y, vals in zip(years_list, rainfall_list)}
     except Exception:
         rainfall_by_year = None
     # Audio: load rain sound (best-effort) and setup per-month volume control
-    rain_sound_path = os.path.join(os.path.dirname(__file__), 'rain_sound.mp3')
+    rain_sound_path = os.path.join(os.path.dirname(__file__), 'image', 'rain_sound_image.mp3')
     music_available = False
     # compute per-year min/max monthly values for normalization
     per_year_month_minmax = {}
@@ -524,7 +524,7 @@ def main():
         # attempt to re-load rainfall data if loader is available
         try:
             if load_rainfall_data is not None:
-                xml_path = os.path.join(os.path.dirname(__file__), 'monthlyElement.xml')
+                xml_path = os.path.join(os.path.dirname(__file__), 'data', 'monthlyElement.xml')
                 if os.path.exists(xml_path):
                     years_list, rainfall_list = load_rainfall_data(xml_path)
                     rainfall_by_year = {str(y): vals for y, vals in zip(years_list, rainfall_list)}

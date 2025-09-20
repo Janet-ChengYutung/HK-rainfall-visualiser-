@@ -24,7 +24,7 @@ jobs:
           pyinstaller Main.py --onefile --noconfirm --windowed \
             --add-data "image:image" \
             --add-data "rainfall_charts:rainfall_charts" \
-            --add-data "monthlyElement.xml:." \
+            --add-data "data/monthlyElement.xml:." \
             --add-data "GoogleSansCode-VariableFont_wght.ttf:."
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -51,7 +51,7 @@ jobs:
           pyinstaller Main.py --onefile --noconfirm --windowed ^
             --add-data "image;image" ^
             --add-data "rainfall_charts;rainfall_charts" ^
-            --add-data "monthlyElement.xml;." ^
+            --add-data "data/monthlyElement.xml;." ^
             --add-data "GoogleSansCode-VariableFont_wght.ttf;."
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4

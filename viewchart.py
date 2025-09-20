@@ -102,7 +102,7 @@ def plot_rainfall_for_year(years, rainfall, year):
     print(f"Range: {max(vals)-min(vals):.1f} mm")
 
 if __name__ == "__main__":
-    xml_path = "monthlyElement.xml"
+    xml_path = os.path.join(os.path.dirname(__file__), 'data', 'monthlyElement.xml')
     years, rainfall = load_rainfall_data(xml_path)
     min_year = min(years)
     max_year = max(years)
