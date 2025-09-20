@@ -1,4 +1,3 @@
 image:image
-rainfall_charts:rainfall_charts
 data/monthlyElement.xml:.
 GoogleSansCode-VariableFont_wght.ttf:.

@@ -26,13 +26,12 @@ jobs:
         run: |
           pyinstaller Main.py --onefile --noconfirm --windowed \
             --add-data "image:image" \
-            --add-data "rainfall_charts:rainfall_charts" \
             --add-data "data/monthlyElement.xml:." \
             --add-data "GoogleSansCode-VariableFont_wght.ttf:."
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-build
+          name: HK_Rainfall_Visualiser_mac
           path: dist
 
   build-windows:
@@ -53,13 +52,12 @@ jobs:
         run: |
           pyinstaller Main.py --onefile --noconfirm --windowed ^
             --add-data "image;image" ^
-            --add-data "rainfall_charts;rainfall_charts" ^
-            --add-data "data/monthlyElement.xml;." ^
-            --add-data "GoogleSansCode-VariableFont_wght.ttf;."
+              --add-data "data/monthlyElement.xml;." ^
+              --add-data "GoogleSansCode-VariableFont_wght.ttf;."
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build
+          name: HK_Rainfall_Visualiser_win
           path: dist
 
   publish-release:
@@ -72,5 +70,6 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: build-${{ github.run_id }}
-          artifacts: macos-build,windows-build
+          artifacts: HK_Rainfall_Visualiser_mac,HK_Rainfall_Visualiser_win
+          name: "HK Rainfall Visualiser"
           token: ${{ secrets.GITHUB_TOKEN }}
