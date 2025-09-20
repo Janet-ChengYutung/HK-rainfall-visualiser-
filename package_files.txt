@@ -1,8 +1,2 @@
-# List of files or folders to include in the PyInstaller bundle
-# Format: source_path:target_relative_path
-# Lines starting with # are ignored
-
-image:image
-rainfall_charts:rainfall_charts
-monthlyElement.xml:.
-GoogleSansCode-VariableFont_wght.ttf:.
+This file was consolidated into `combined_texts.txt`.
+See `/combined_texts.txt` for the original `package_files.txt` contents.
