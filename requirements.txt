@@ -1,2 +1,2 @@
-This file was consolidated into `combined_texts.txt`.
-See `/combined_texts.txt` for the original `requirements.txt` contents.
+pygame==2.6.1
+watchdog==3.0.0
