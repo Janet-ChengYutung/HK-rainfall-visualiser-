@@ -1,3 +1,0 @@
-```plaintext
-$(sed -n '1,200p' /Users/janet/Downloads/pfad/HK-rainfall-visualiser-/package_files.txt)
-```
