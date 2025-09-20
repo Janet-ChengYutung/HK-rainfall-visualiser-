@@ -58,3 +58,34 @@ jobs:
         with:
           name: windows-build
           path: dist
+
+  publish-release:
+    name: Publish release with artifacts
+    runs-on: ubuntu-latest
+    needs: [build-macos, build-windows]
+    if: always()
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-build
+          path: macos-artifact
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: windows-artifact
+
+      - name: Prepare packages directory
+        run: |
+          mkdir -p packages
+          # copy any produced zips or files from the artifacts
+          cp -R macos-artifact/* packages/ || true
+          cp -R windows-artifact/* packages/ || true
+
+      - name: Create GitHub release and upload packages
+        uses: ncipollo/release-action@v1
+        with:
+          tag: build-${{ github.run_id }}
+          files: packages/*
