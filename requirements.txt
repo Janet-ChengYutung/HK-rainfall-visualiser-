@@ -1,2 +1,9 @@
+# Runtime dependencies for HK Rainfall Visualiser
+# - Keep pins for reproducible CI and packaging builds
+# - Do not include build-only tools here unless you want them installed in the runtime environment
+
 pygame==2.6.1
 watchdog==3.0.0
+
+# Optional build dependency (uncomment if you want pyinstaller available in the environment)
+# pyinstaller==6.16.0
