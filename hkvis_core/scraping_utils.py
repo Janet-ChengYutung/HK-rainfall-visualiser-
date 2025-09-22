@@ -16,7 +16,6 @@ try:
     resp = requests.get(url, headers=headers, timeout=15)
     resp.raise_for_status()  # raise on HTTP errors
 
-    # Save as text using response encoding (fall back to utf-8)
     encoding = resp.encoding if resp.encoding else "utf-8"
     with open(output_file, "w", encoding=encoding) as f:
         f.write(resp.text)

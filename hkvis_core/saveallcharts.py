@@ -1,10 +1,9 @@
-from downloadchart import load_rainfall_data, plot_rainfall_for_year
+from hkvis_core.downloadchart import load_rainfall_data, plot_rainfall_for_year
 import os
 import matplotlib.pyplot as plt
 
-import os
 script_dir = os.path.dirname(os.path.abspath(__file__))
-xml_path = os.path.join(script_dir, 'data', 'monthlyElement.xml')
+xml_path = os.path.join(script_dir, '..', 'data', 'monthlyElement.xml')
 out_dir = 'rainfall_charts'
 years, _ = load_rainfall_data(xml_path)
 if not os.path.exists(out_dir):

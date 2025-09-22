@@ -12,13 +12,19 @@ def create_tsx_background(path, w, h):
 
 # optional animation module (animationtest) and rainfall loader (viewchart)
 try:
-    import animationtest
+    from hkvis_core import animationtest as animationtest
 except Exception:
-    animationtest = None
+    try:
+        import animationtest
+    except Exception:
+        animationtest = None
 try:
-    from viewchart import load_rainfall_data
+    from hkvis_core.viewchart import load_rainfall_data
 except Exception:
-    load_rainfall_data = None
+    try:
+        from viewchart import load_rainfall_data
+    except Exception:
+        load_rainfall_data = None
 
 # ---------- Image Button Class ----------
 class ImageButton:
@@ -60,7 +66,10 @@ PLACEHOLDER_COLOR = (230, 230, 230)
 ICON_BASE_PATH = os.path.join(os.path.dirname(__file__), "image")
 
 # Path to TSX background file (set to None to disable TSX background)
-TSX_BACKGROUND_PATH = os.path.join(os.path.dirname(__file__), "animation.tsx")  # or None to use default solid color background
+# By default we disable TSX background so the built-in ASCII animation from
+# `hkvis_core.animationtest` is used. If you have a real `animation.tsx` file
+# place it next to `Main.py` and set this to its path.
+TSX_BACKGROUND_PATH = None  # or set to os.path.join(os.path.dirname(__file__), "animation.tsx")
 
 # Optional: path to a TTF/OTF font file (Google Sans or another). If None or not found, system font used.
 # Example: "/Users/janet/Downloads/fonts/GoogleSans-Regular.ttf"
@@ -99,8 +108,8 @@ def main():
     icon_chart_off = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_off.png")).convert_alpha()
     icon_chart_on = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_on.png")).convert_alpha()
 
-    # Load Google Sans Code font if available, otherwise use default system font
-    font_path = os.path.join(os.path.dirname(__file__), "GoogleSansCode-VariableFont_wght.ttf")
+    # Load Google Sans Code font from the `data/` directory if available, otherwise use default system font
+    font_path = os.path.join(os.path.dirname(__file__), "data", "GoogleSansCode-VariableFont_wght.ttf")
     if os.path.exists(font_path):
         try:
             UI_FONT = pygame.font.Font(font_path, 20)
@@ -600,6 +609,8 @@ def main():
     tsx_background_surface = None
     # cache last scaled animation frame so we can freeze it when paused
     last_anim_frame = None
+    # debug: whether we've saved a snapshot of the first frame
+    _debug_snapshot_saved = False
     # music month cycling state: which month index (0..11) is currently driving volume
     music_month_index = 0
     # seconds per month step (controls how fast the music volume cycles through months)
@@ -789,6 +800,15 @@ def main():
                         scaled = pygame.transform.smoothscale(anim_surface, (cur_w, cur_h))
                         screen.blit(scaled, (0,0))
                         last_anim_frame = scaled.copy()
+                        # save a snapshot of the first rendered scaled frame for debugging
+                        if not _debug_snapshot_saved:
+                            try:
+                                tmp_path = os.path.join(tempfile.gettempdir(), 'hkvis_snapshot.png')
+                                pygame.image.save(last_anim_frame, tmp_path)
+                                print(f"Saved animation snapshot to: {tmp_path}")
+                                _debug_snapshot_saved = True
+                            except Exception as e:
+                                print(f"Failed to save snapshot: {e}")
                     except Exception:
                         screen.blit(anim_surface, (0,0))
                         try:
@@ -837,6 +857,17 @@ def main():
         btn_chart.draw(screen)
         # draw year slider on bottom center
         year_slider.draw(screen, UI_FONT)
+        # Terminal-only debug logging (periodic)
+        try:
+            # print status once per second
+            if not hasattr(main, '_last_dbg_print'):
+                main._last_dbg_print = 0.0
+            nowt = time.time()
+            if (nowt - main._last_dbg_print) >= 1.0:
+                main._last_dbg_print = nowt
+                print(f"debug: animationtest_loaded={animationtest is not None} anim_surface_set={anim_surface is not None} last_anim_frame_set={last_anim_frame is not None}")
+        except Exception:
+            pass
         pygame.display.flip()
         FPS_CLOCK.tick(FPS)
 

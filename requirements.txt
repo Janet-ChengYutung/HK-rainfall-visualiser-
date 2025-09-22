@@ -1,9 +1,0 @@
-# Minimal runtime dependency required to run `Main.py`:
-# - `pygame` is used for the application UI and audio playback.
-# - `watchdog` was used for development/watch tasks and is not required to run the app; keep it in a dev requirements file if needed.
-
-pygame==2.6.1
-
-# Optional developer/build dependencies (not required to run Main.py):
-# watchdog==3.0.0
-# pyinstaller==6.16.0

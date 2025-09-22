@@ -20,7 +20,6 @@ import inspect
 
 
 
-
 # --- Rainfall Monthly Rate Table from monthlyElement.xml ---
 def load_rainfall_data(xml_path):
     with open(xml_path, 'r', encoding='utf-8') as f:
@@ -118,5 +117,3 @@ if __name__ == "__main__":
         year = choice
         print_rainfall_table(years, rainfall, year)
         plot_rainfall_for_year(years, rainfall, year)
-
- 

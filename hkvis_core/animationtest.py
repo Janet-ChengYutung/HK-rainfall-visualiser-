@@ -41,60 +41,40 @@ BOTTOM_WHITEN_BOOST = 0.25  # how much to move bottom rows toward white (0..1)
 
 # --- pattern generation (returns (char, norm) per cell) ---
 def generate_fluid_pattern(data, global_time, cols=COLS, rows=ROWS, speed_factor=SPEED_FACTOR, base_scale=BASE_TIME_SCALE):
-    # compute a data-driven speed multiplier based on the year's overall rain
-    # mean_intensity is mean(month)/max(month) in [0..1]
     if data:
         max_val = max(data)
         mean_val = sum(data) / len(data)
         max_val = max(max_val, 1.0)
-        # Normalize mean by a global cap so absolute values matter (not only per-year max)
         mean_intensity = min(1.0, mean_val / GLOBAL_MEAN_CAP)
     else:
         max_val = 1.0
         mean_intensity = 0.0
-
-    # map mean_intensity to a wider multiplier range so differences between
-    # dry/normal/wet years are more obvious. We bias the mapping to give
-    # a stronger effect for high-mean years.
-    # mean_intensity in [0..1] -> data_speed_multiplier roughly in [0.3 .. 2.3]
     data_speed_multiplier = 0.3 + (mean_intensity ** 0.7) * 2.0
-
-    # effective speed factor used per-cell (apply global multiplier)
     effective_speed_factor = speed_factor * data_speed_multiplier * SPEED_MULTIPLIER
-
     grid = []
     for y in range(rows):
         row_chars = []
         for x in range(cols):
             data_index = int((x / cols) * len(data))
             intensity = data[data_index] / max_val
-
-            # per-cell time scale uses per-cell intensity (month relative to year max)
-            # and the effective_speed_factor derived from the year's mean rainfall
             time_scale = base_scale + intensity * effective_speed_factor
             t = global_time * time_scale
-
             flowX = x + (t * 0.2)
             flowY = y - (t * 0.8)
             wave1 = math.sin((x * 0.18) + (flowY * 0.12) + (t * 0.05)) * 0.5 + 0.5
             wave2 = math.sin((x * 0.08) + (flowY * 0.22) + (t * 0.08)) * 0.4 + 0.6
             wave3 = math.cos((x * 0.25) + (flowY * 0.08) - (t * 0.06)) * 0.5 + 0.5
             wave4 = math.sin((flowX * 0.15) + (flowY * 0.35) + (t * 0.1)) * 0.3 + 0.7
-
             horizontalFlow = math.sin((x * 0.15) + (t * 0.12)) * 0.3
             diagonalFlow = math.cos((x * 0.08) + (y * 0.08) + (t * 0.09)) * 0.25
-
             combined = (wave1 + wave2 + wave3 + wave4) / 4.0 + horizontalFlow + diagonalFlow
             modulated = combined * intensity
-
             noise1 = math.sin(x * 0.5 + flowY * 0.4 + t * 0.15) * 0.2
             noise2 = math.cos(x * 0.7 + y * 0.3 + t * 0.12) * 0.15
             randomness = math.sin(x * 1.2 + y * 0.8 + t * 0.18) * math.cos(x * 0.6 + y * 1.1) * 0.25
             final = modulated + noise1 + noise2 + randomness
-
             charRandom = math.sin(x * 0.3 + y * 0.5 + t * 0.1) * 0.1
             adjustedFinal = final + charRandom
-
             norm = (math.tanh(adjustedFinal) + 1.0) / 2.0
             idx = int(norm * (len(ASCII_CHARS) - 1))
             ch = ASCII_CHARS[max(0, min(len(ASCII_CHARS) - 1, idx))]
@@ -102,27 +82,20 @@ def generate_fluid_pattern(data, global_time, cols=COLS, rows=ROWS, speed_factor
         grid.append(row_chars)
     return grid
 
-# linear interpolation between two rgb colors
 def lerp_color(a, b, t):
     return (int(a[0] + (b[0]-a[0]) * t),
             int(a[1] + (b[1]-a[1]) * t),
             int(a[2] + (b[2]-a[2]) * t))
 
-# get base color for a row using palette with top & bottom bias, then apply whiten toward white
 def row_base_color(row_idx, total_rows, top_whiten=TOP_WHITEN_BIAS, bottom_boost=BOTTOM_WHITEN_BOOST):
     t = row_idx / max(1, total_rows - 1)
-
-    # a tiny top bias on palette position (keeps previous aesthetic)
     t_top_biased = max(0.0, t - (1.0 - t) * (top_whiten * 0.15))
-
-    # bottom boost so bottom rows move closer to the lightest palette entry
     if t > 0.6:
-        bottom_factor = (t - 0.6) / 0.4  # 0..1 for 0.6..1.0
+        bottom_factor = (t - 0.6) / 0.4
         t_bottom_biased = t_top_biased + (1.0 - t_top_biased) * (bottom_factor * bottom_boost)
         t_final = min(1.0, t_bottom_biased)
     else:
         t_final = t_top_biased
-
     segs = len(BLUE_PALETTE) - 1
     seg_pos = t_final * segs
     i = int(seg_pos)
@@ -130,9 +103,6 @@ def row_base_color(row_idx, total_rows, top_whiten=TOP_WHITEN_BIAS, bottom_boost
     c1 = BLUE_PALETTE[i]
     c2 = BLUE_PALETTE[min(i+1, segs)]
     base = lerp_color(c1, c2, frac)
-
-    # apply whiten bias by interpolating toward white depending on row position:
-    # top rows get TOP_WHITEN_BIAS stronger, bottom rows get BOTTOM_WHITEN_BOOST influence
     top_influence = max(0.0, 1.0 - t) * top_whiten
     bottom_influence = 0.0
     if t > 0.6:
@@ -141,12 +111,10 @@ def row_base_color(row_idx, total_rows, top_whiten=TOP_WHITEN_BIAS, bottom_boost
     whiten_amount = min(1.0, top_influence + bottom_influence)
     if whiten_amount > 0:
         white = (255, 255, 255)
-        base = lerp_color(base, white, whiten_amount * 0.9)  # 0..0.9 toward white
+        base = lerp_color(base, white, whiten_amount * 0.9)
     return base
 
-# apply density tint (makes dense chars brighter and slightly more cyan)
 def apply_density_tint(base_color, norm):
-    # norm 0..1 -> mix base_color toward a very bright cyan/white
     bright = (230, 255, 255)
     t1 = norm
     c_mid = lerp_color(base_color, bright, t1 * 0.95)
@@ -155,16 +123,12 @@ def apply_density_tint(base_color, norm):
     b = min(255, int(b + 70 * norm))
     return (r, g, b)
 
-# final color for a cell (includes a small time modulation for liveliness)
 def final_cell_color(base, norm, row_idx, total_rows, time_mod=0.0, white_factor=0.0):
-    # subtle modulation of brightness by time_mod (0..1)
-    mod = 1.0 + (time_mod - 0.5) * 0.08  # small +/- change
+    mod = 1.0 + (time_mod - 0.5) * 0.08
     r, g, b = apply_density_tint(base, norm)
     r = int(max(0, min(255, r * mod)))
     g = int(max(0, min(255, g * mod)))
     b = int(max(0, min(255, b * mod)))
-    # blend toward white based on white_factor (0..1). This creates random
-    # per-cell flashes that push colors toward white over time.
     if white_factor and white_factor > 0:
         wr = int(255 * white_factor + r * (1 - white_factor))
         wg = int(255 * white_factor + g * (1 - white_factor))
@@ -172,30 +136,20 @@ def final_cell_color(base, norm, row_idx, total_rows, time_mod=0.0, white_factor
         return (wr, wg, wb)
     return (r, g, b)
 
-# --- PYGAME MAIN ---
 def main():
     pygame.init()
-
     monos = pygame.font.match_font('consolas, courier, monospace')
     if monos:
-        font = pygame.font.Font(monos, FONT_SIZE)
+        anim_font = pygame.font.Font(monos, FONT_SIZE)
     else:
-        font = pygame.font.SysFont('couriernew', FONT_SIZE)
-
-    sample_surf = font.render('M', True, (255,255,255))
-    char_w, char_h = sample_surf.get_size()
-
-    window_width = char_w * COLS + PADDING * 2
-    window_height = char_h * ROWS + PADDING * 2
-
-    screen = pygame.display.set_mode((window_width, window_height))
-    pygame.display.set_caption('Rain Art - Blue (Whiten Controls)')
-
+        anim_font = pygame.font.SysFont('couriernew', FONT_SIZE)
+    sample = anim_font.render('M', True, (255,255,255))
+    anim_char_w, anim_char_h = sample.get_size()
+    anim_surface = pygame.Surface((anim_char_w * COLS + PADDING*2,
+                                   anim_char_h * ROWS + PADDING*2))
     clock = pygame.time.Clock()
     frame_time = 0.0
     running = True
-    global SPEED_FACTOR, BASE_TIME_SCALE, TOP_WHITEN_BIAS, BOTTOM_WHITEN_BOOST
-
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -203,41 +157,27 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                # (whiten controls removed: whiten biases are fixed in config)
-
         dt = clock.tick(FPS) / 1000.0
         frame_time += dt
-
         grid = generate_fluid_pattern(RAIN_DATA, frame_time, cols=COLS, rows=ROWS, speed_factor=SPEED_FACTOR, base_scale=BASE_TIME_SCALE)
-
-        # black background
-        screen.fill(BG_COLOR)
-
-        # render grid: compute base row color from palette (with whiten bias), then final color per char
-        for row_idx, row in enumerate(grid):
-            y = PADDING + row_idx * char_h
-            base = row_base_color(row_idx, ROWS, top_whiten=TOP_WHITEN_BIAS, bottom_boost=BOTTOM_WHITEN_BOOST)
-            for col_idx, (ch, norm) in enumerate(row):
-                col_mod = (math.sin((frame_time * 1.2) + col_idx * 0.12) + 1) / 2  # 0..1
-                # deterministic pseudo-random seed per cell
-                seed = (row_idx * 1315423911) ^ (col_idx * 2654435761)
-                # small jitter based on seed and time to create random white flashes
-                # compute a slow phase for this cell
-                phase = (seed % 1000) / 1000.0
-                # oscillate white factor with a slow sine and per-cell phase, scaled by a small amplitude
-                white_osc = (math.sin(frame_time * 1.5 + phase * 6.28318) + 1) / 2  # 0..1
-                # reduce amplitude so white flashes are noticeable but infrequent
-                white_factor = (white_osc ** 3) * 0.9  # bias toward 0, peak near 1
-                # add a threshold so only some cells flash (introduce sparsity)
-                sparsity = ((seed >> 3) & 31) / 31.0  # 0..1 per cell
-                white_factor = white_factor * (sparsity * 0.8)
-                color = final_cell_color(base, norm, row_idx, ROWS, time_mod=col_mod, white_factor=white_factor)
-                surf = font.render(ch, True, color)
-                x = PADDING + col_idx * char_w
-                screen.blit(surf, (x, y))
-
+        anim_surface.fill(BG_COLOR)
+        if grid:
+            for row_idx, row in enumerate(grid):
+                y = PADDING + row_idx * anim_char_h
+                base = row_base_color(row_idx, ROWS, top_whiten=TOP_WHITEN_BIAS, bottom_boost=BOTTOM_WHITEN_BOOST)
+                for col_idx, (ch, norm) in enumerate(row):
+                    col_mod = (math.sin((frame_time * 1.2) + col_idx * 0.12) + 1) / 2
+                    seed = (row_idx * 1315423911) ^ (col_idx * 2654435761)
+                    phase = (seed % 1000) / 1000.0
+                    white_osc = (math.sin(frame_time * 1.5 + phase * 6.28318) + 1) / 2
+                    white_factor = (white_osc ** 3) * 0.9
+                    sparsity = ((seed >> 3) & 31) / 31.0
+                    white_factor = white_factor * (sparsity * 0.8)
+                    color = final_cell_color(base, norm, row_idx, ROWS, time_mod=col_mod, white_factor=white_factor)
+                    surf = anim_font.render(ch, True, color)
+                    x = PADDING + col_idx * anim_char_w
+                    anim_surface.blit(surf, (x, y))
         pygame.display.flip()
-
     pygame.quit()
     sys.exit()
 

@@ -1,3 +1,0 @@
-image:image
-data/monthlyElement.xml:.
-GoogleSansCode-VariableFont_wght.ttf:.

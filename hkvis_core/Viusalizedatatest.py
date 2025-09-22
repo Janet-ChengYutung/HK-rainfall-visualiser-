@@ -76,27 +76,20 @@ def generate_fluid_pattern(data, global_time, cols=COLS, rows=ROWS, speed_factor
         grid.append(row_chars)
     return grid
 
-# linear interpolation between two rgb colors
 def lerp_color(a, b, t):
     return (int(a[0] + (b[0]-a[0]) * t),
             int(a[1] + (b[1]-a[1]) * t),
             int(a[2] + (b[2]-a[2]) * t))
 
-# get base color for a row using palette with slight top bias
 def row_base_color(row_idx, total_rows, top_saturation_bias=TOP_SATURATION_BIAS, bottom_boost=BOTTOM_SATURATION_BOOST):
     t = row_idx / max(1, total_rows - 1)
-
-    # apply a tiny top bias on palette position to favor brighter palette positions near top
     t_top_biased = max(0.0, t - (1.0 - t) * top_saturation_bias * 0.2)
-
-    # apply bottom boost so bottom rows move closer to the lightest palette entry
     if t > 0.6:
-        bottom_factor = (t - 0.6) / 0.4  # 0..1 for 0.6..1.0
+        bottom_factor = (t - 0.6) / 0.4
         t_bottom_biased = t_top_biased + (1.0 - t_top_biased) * (bottom_factor * bottom_boost)
         t_final = min(1.0, t_bottom_biased)
     else:
         t_final = t_top_biased
-
     segs = len(BLUE_PALETTE) - 1
     seg_pos = t_final * segs
     i = int(seg_pos)
@@ -105,9 +98,7 @@ def row_base_color(row_idx, total_rows, top_saturation_bias=TOP_SATURATION_BIAS,
     c2 = BLUE_PALETTE[min(i+1, segs)]
     return lerp_color(c1, c2, frac)
 
-# increase saturation of an RGB color by factor s (>1 increases sat, <1 decreases)
 def increase_saturation(rgb, factor):
-    # convert 0..255 -> 0..1
     r, g, b = rgb
     r_f, g_f, b_f = r/255.0, g/255.0, b/255.0
     h, l, s = colorsys.rgb_to_hls(r_f, g_f, b_f)
@@ -115,9 +106,7 @@ def increase_saturation(rgb, factor):
     r2, g2, b2 = colorsys.hls_to_rgb(h, l, s_new)
     return (int(r2*255), int(g2*255), int(b2*255))
 
-# apply density tint (makes dense chars brighter and slightly more cyan)
 def apply_density_tint(base_color, norm):
-    # norm 0..1 -> mix base_color toward a very bright cyan
     bright = (230, 255, 255)
     t1 = norm
     c_mid = lerp_color(base_color, bright, t1 * 0.95)
@@ -126,48 +115,35 @@ def apply_density_tint(base_color, norm):
     b = min(255, int(b + 70 * norm))
     return (r, g, b)
 
-# overall function to compute final color for a cell considering top/bottom saturation biases
 def final_cell_color(base, norm, row_idx, total_rows, top_sat_bias, bottom_sat_boost, time_mod=0.0):
-    # row saturation factor: top rows get their sat boosted by (1 + top_sat_bias), bottom rows get boost by bottom_sat_boost scaled by proximity
     t = row_idx / max(1, total_rows - 1)
-    # top contribution (stronger near top)
     top_contrib = max(0.0, 1.0 - t) * top_sat_bias
-    # bottom contribution (stronger near bottom)
     bottom_contrib = 0.0
     if t > 0.6:
         bottom_factor = (t - 0.6) / 0.4
         bottom_contrib = bottom_factor * bottom_sat_boost
     sat_factor = 1.0 + top_contrib + bottom_contrib
-    # add a small time-based modulation to saturation for subtle movement
     sat_factor *= (1.0 + time_mod * 0.06)
     saturated = increase_saturation(base, sat_factor)
-    # apply density tint (brightening + cyan shift based on norm)
     return apply_density_tint(saturated, norm)
 
-# --- PYGAME MAIN ---
 def main():
     pygame.init()
-
     monos = pygame.font.match_font('consolas, courier, monospace')
     if monos:
         font = pygame.font.Font(monos, FONT_SIZE)
     else:
         font = pygame.font.SysFont('couriernew', FONT_SIZE)
-
     sample_surf = font.render('M', True, (255,255,255))
     char_w, char_h = sample_surf.get_size()
-
     window_width = char_w * COLS + PADDING * 2
     window_height = char_h * ROWS + PADDING * 2
-
     screen = pygame.display.set_mode((window_width, window_height))
     pygame.display.set_caption('Rain Art - Blue (Saturation Controls)')
-
     clock = pygame.time.Clock()
     frame_time = 0.0
     running = True
     global SPEED_FACTOR, BASE_TIME_SCALE, TOP_SATURATION_BIAS, BOTTOM_SATURATION_BOOST
-
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -187,7 +163,6 @@ def main():
                 if event.key == pygame.K_LEFT:
                     BASE_TIME_SCALE *= 0.8
                     print("BASE_TIME_SCALE:", round(BASE_TIME_SCALE, 2))
-                # saturation controls
                 if event.key == pygame.K_w:
                     TOP_SATURATION_BIAS = min(2.5, TOP_SATURATION_BIAS + 0.05)
                     print("TOP_SATURATION_BIAS:", round(TOP_SATURATION_BIAS, 3))
@@ -200,30 +175,20 @@ def main():
                 if event.key == pygame.K_d:
                     BOTTOM_SATURATION_BOOST = max(0.0, BOTTOM_SATURATION_BOOST - 0.05)
                     print("BOTTOM_SATURATION_BOOST:", round(BOTTOM_SATURATION_BOOST, 3))
-
         dt = clock.tick(FPS) / 1000.0
         frame_time += dt
-
         grid = generate_fluid_pattern(RAIN_DATA, frame_time, cols=COLS, rows=ROWS, speed_factor=SPEED_FACTOR, base_scale=BASE_TIME_SCALE)
-
-        # black background
         screen.fill(BG_COLOR)
-
-        # render grid: compute base row color from palette, then final color per char
         for row_idx, row in enumerate(grid):
             y = PADDING + row_idx * char_h
             base = row_base_color(row_idx, ROWS)
-            # small time modulation for saturation per column
             for col_idx, (ch, norm) in enumerate(row):
-                col_mod = (math.sin((frame_time * 1.2) + col_idx * 0.12) + 1) / 2  # 0..1
-                # compute final color with saturation adjustments
+                col_mod = (math.sin((frame_time * 1.2) + col_idx * 0.12) + 1) / 2
                 color = final_cell_color(base, norm, row_idx, ROWS, TOP_SATURATION_BIAS, BOTTOM_SATURATION_BOOST, time_mod=col_mod)
                 surf = font.render(ch, True, color)
                 x = PADDING + col_idx * char_w
                 screen.blit(surf, (x, y))
-
         pygame.display.flip()
-
     pygame.quit()
     sys.exit()
 
