@@ -98,7 +98,6 @@ def main():
     # Chart icons for the new button (chart_off -> chart_on when pressed)
     icon_chart_off = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_off.png")).convert_alpha()
     icon_chart_on = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_on.png")).convert_alpha()
-    icon_chart_on = icon_chart_on
 
     # Load Google Sans Code font if available, otherwise use default system font
     font_path = os.path.join(os.path.dirname(__file__), "GoogleSansCode-VariableFont_wght.ttf")
@@ -176,7 +175,6 @@ def main():
             # draw slider and year label
             bar_h = 8
             bar_rect = pygame.Rect(self.rect.x, self.rect.y + (self.rect.height - bar_h)//2, self.rect.width, bar_h)
-            # (no external bar background image; draw only the bar and year card)
             pygame.draw.rect(surface, (200,200,200), bar_rect, border_radius=4)
             # fill upto current year
             pos = self.year_to_pos(self.year)
@@ -203,26 +201,20 @@ def main():
             bg_x = left_x - bg_w - gap
             bg_y = bar_rect.centery - (bg_h // 2)
             bg_rect = pygame.Rect(bg_x, bg_y, bg_w, bg_h)
-            # draw a white rounded rectangle behind the year label with a subtle shadow
+            # draw a slightly translucent dark rounded card behind the year label
             try:
-                # shadow
-                shadow = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
-                shadow.fill((0,0,0,0))
-                pygame.draw.rect(shadow, (0,0,0,60), (3,3,bg_w,bg_h), border_radius=10)
-                surface.blit(shadow, (bg_x, bg_y))
-                # white rounded card
                 card = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
                 card.fill((0,0,0,0))
-                pygame.draw.rect(card, (255,255,255), (0,0,bg_w,bg_h), border_radius=10)
+                pygame.draw.rect(card, (0,0,0,200), (0,0,bg_w,bg_h), border_radius=6)
                 surface.blit(card, (bg_x, bg_y))
             except Exception:
-                # fallback to solid small white rectangle if alpha surfaces are unsupported
-                pygame.draw.rect(surface, (255,255,255), bg_rect)
-            # render year text in dark color to contrast the white background
-            try:
-                year_surf = YEAR_FONT.render(str(self.year), True, (10,10,10))
-            except Exception:
-                year_surf = font.render(str(self.year), True, (10,10,10))
+                # fallback to solid small dark rectangle if alpha surfaces are unsupported
+                pygame.draw.rect(surface, (30,30,30), bg_rect)
+            # blit year text inside the square
+            text_x = bg_x + bg_margin
+            text_y = bg_y + bg_margin
+            surface.blit(year_surf, (text_x, text_y))
+            # blit year text inside the black square with margin
             text_x = bg_x + bg_margin
             text_y = bg_y + bg_margin
             surface.blit(year_surf, (text_x, text_y))
@@ -685,17 +677,6 @@ def main():
         btn_reload.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y, btn_size, btn_size)
         # place chart button above the reload button
         btn_chart.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y - (btn_size + spacing), btn_size, btn_size)
-        # keep year slider centered at the bottom even when window is resized/fullscreen
-        try:
-            # choose slider width as a fraction of current window width
-            slider_w = int(w * 0.4)
-            # slider height scaled modestly with window height (clamped)
-            slider_h = max(32, min(56, int(h * 0.055)))
-            slider_x = (w - slider_w) // 2
-            slider_y = h - slider_h - int(h * 0.03)
-            year_slider.rect = pygame.Rect(slider_x, slider_y, slider_w, slider_h)
-        except Exception:
-            pass
         
         # Draw background - TSX background if available, otherwise animation or solid color
         if tsx_background_surface:
