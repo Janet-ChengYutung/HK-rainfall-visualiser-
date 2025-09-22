@@ -37,15 +37,21 @@ pip install pygame</pre>
 				<section class="card" style="margin-top:18px">
 					<h2>Live animation demo</h2>
 					<p class="muted">This is a browser port of the visualiser's ASCII-style fluid animation (runs with JavaScript on the page).</p>
-					<canvas id="animCanvas" style="width:100%; height:360px; display:block; border-radius:8px; background:#000"></canvas>
-					<p class="muted" style="font-size:12px; margin-top:8px">The demo runs entirely in your browser — no download required.</p>
+							<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap">
+								<button id="playPauseBtn">Pause</button>
+								<label style="font-size:13px">Year: <select id="yearSelect"></select></label>
+								<label style="font-size:13px">Density: <select id="densitySelect"><option value="low">Low</option><option value="med" selected>Medium</option><option value="high">High</option></select></label>
+							</div>
+							<canvas id="animCanvas" style="width:100%; height:360px; display:block; border-radius:8px; background:#000"></canvas>
+							<p class="muted" style="font-size:12px; margin-top:8px">The demo runs entirely in your browser — no download required. Use the controls above to pause, change the year (animation speed), or adjust density for performance.</p>
 				</section>
 				<script>
 				// Port of hkvis_core.animationtest.generate_fluid_pattern to JavaScript
 				(function(){
 					const ASCII_CHARS = "@%#*+=-:. ";
-					const RAIN_DATA = [15.2,8.7,45.3,78.9,156.4,234.7,298.5,267.3,189.6,67.8,23.4,12.1];
-					const COLS = 100, ROWS = 36;
+					const baseRAIN = [15.2,8.7,45.3,78.9,156.4,234.7,298.5,267.3,189.6,67.8,23.4,12.1];
+					let currentRain = baseRAIN.slice();
+					let COLS = 100, ROWS = 36;
 					const PADDING = 8;
 					const FONT_SIZE = 14; // base, will scale
 					const SPEED_FACTOR = 6.0;
@@ -161,9 +167,10 @@ pip install pygame</pre>
 						const now = performance.now();
 						const dt = Math.min(0.05, (now - lastTime) / 1000);
 						lastTime = now;
-						frameTime += dt;
+								// advance time only when playing
+								if(playing) frameTime += dt;
 
-						const grid = generateFluidPattern(RAIN_DATA, frameTime, COLS, ROWS);
+								const grid = generateFluidPattern(currentRain, frameTime, COLS, ROWS);
 						// draw background
 						ctx.fillStyle = 'black';
 						ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -192,9 +199,32 @@ pip install pygame</pre>
 								ctx.fillText(ch, cx, cy);
 							}
 						}
-						requestAnimationFrame(draw);
+												requestAnimationFrame(draw);
 					}
-					requestAnimationFrame(draw);
+										// Controls and responsiveness (setup once)
+										const playPauseBtn = document.getElementById('playPauseBtn');
+										const yearSelect = document.getElementById('yearSelect');
+										const densitySelect = document.getElementById('densitySelect');
+										let playing = true;
+										playPauseBtn.addEventListener('click', ()=>{ playing = !playing; playPauseBtn.textContent = playing? 'Pause' : 'Play'; });
+										// populate years (1884..2025 as in Python)
+										for(let y=1884;y<=2025;y++){
+											const opt = document.createElement('option'); opt.value = y; opt.textContent = y; if(y===2025) opt.selected = true; yearSelect.appendChild(opt);
+										}
+										let selectedYear = 2025;
+										function updateRainDataForYear(year){
+											const yearNorm = (year - 1884) / (2025 - 1884);
+											const scale = 0.5 + yearNorm * 1.0; // scale in [0.5..1.5]
+											currentRain = baseRAIN.map(v=> v * scale);
+										}
+										updateRainDataForYear(selectedYear);
+										yearSelect.addEventListener('change', ()=>{ selectedYear = parseInt(yearSelect.value,10) || 2025; updateRainDataForYear(selectedYear); });
+										densitySelect.addEventListener('change', ()=>{ const v = densitySelect.value; if(v==='low'){ COLS = 60; ROWS = 24 } else if(v==='med'){ COLS = 100; ROWS = 36 } else { COLS = 140; ROWS = 48 } resizeCanvas(); });
+										// reduce density on small screens and sync density select
+										function adaptDensityForScreen(){ if(window.innerWidth < 640){ COLS = 60; ROWS = 24; densitySelect.value='low' } }
+										adaptDensityForScreen();
+										window.addEventListener('resize', ()=>{ adaptDensityForScreen(); resizeCanvas(); });
+										requestAnimationFrame(draw);
 				})();
 				</script>
 		<footer style="margin-top:18px; max-width:860px" class="muted">Note: The interactive visualiser is a local pygame app and cannot run directly inside GitHub Pages. This page provides instructions and download links.</footer>
