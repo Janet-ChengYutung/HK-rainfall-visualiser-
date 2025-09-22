@@ -685,6 +685,17 @@ def main():
         btn_reload.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y, btn_size, btn_size)
         # place chart button above the reload button
         btn_chart.rect = pygame.Rect(base_x + (btn_size + spacing) * 2, base_y - (btn_size + spacing), btn_size, btn_size)
+        # keep year slider centered at the bottom even when window is resized/fullscreen
+        try:
+            # choose slider width as a fraction of current window width
+            slider_w = int(w * 0.4)
+            # slider height scaled modestly with window height (clamped)
+            slider_h = max(32, min(56, int(h * 0.055)))
+            slider_x = (w - slider_w) // 2
+            slider_y = h - slider_h - int(h * 0.03)
+            year_slider.rect = pygame.Rect(slider_x, slider_y, slider_w, slider_h)
+        except Exception:
+            pass
         
         # Draw background - TSX background if available, otherwise animation or solid color
         if tsx_background_surface:
