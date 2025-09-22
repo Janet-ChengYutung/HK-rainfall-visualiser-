@@ -26,6 +26,15 @@ pip install -r requirements.txt
 python Main.py
 ```
 
+## 🌐 Live demo (GitHub Pages)
+
+There is an in-browser demo of the visualiser in `docs/index.html` (a JS port of the animation) so visitors can view the animation without downloading the app. When Pages is enabled (Branch: `main`, Folder: `/docs`) the demo is published to the repository's Pages URL.
+
+Preview screenshot:
+
+![Example visualiser screenshot](docs/assets/example.png)
+
+
 ## 📦 Packaging and Downloads
 - CI builds for macOS and Windows create packaged executables and publish them as a GitHub Release titled "HK Rainfall Visualiser". Check the repository's Releases page to download the artifacts.
 - Each Release contains per-platform files:
