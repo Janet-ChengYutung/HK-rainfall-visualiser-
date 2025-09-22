@@ -98,12 +98,7 @@ def main():
     # Chart icons for the new button (chart_off -> chart_on when pressed)
     icon_chart_off = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_off.png")).convert_alpha()
     icon_chart_on = pygame.image.load(os.path.join(ICON_BASE_PATH, "chart_on.png")).convert_alpha()
-    # optional background image to place under the slider/bar area
-    bar_bg_img = None
-    try:
-        bar_bg_img = pygame.image.load(os.path.join(ICON_BASE_PATH, "bar_bg.png")).convert_alpha()
-    except Exception:
-        bar_bg_img = None
+    icon_chart_on = icon_chart_on
 
     # Load Google Sans Code font if available, otherwise use default system font
     font_path = os.path.join(os.path.dirname(__file__), "GoogleSansCode-VariableFont_wght.ttf")
@@ -181,21 +176,7 @@ def main():
             # draw slider and year label
             bar_h = 8
             bar_rect = pygame.Rect(self.rect.x, self.rect.y + (self.rect.height - bar_h)//2, self.rect.width, bar_h)
-            # If a bar background image is available, draw it under the bar/year area
-            try:
-                if bar_bg_img is not None:
-                    # scale the background image to cover the slider width with some vertical padding
-                    pad_x = 12
-                    pad_y = 10
-                    dst_w = max(16, self.rect.width + pad_x)
-                    dst_h = max(16, int(self.rect.height * 0.9) + pad_y)
-                    bg_scaled = pygame.transform.smoothscale(bar_bg_img, (dst_w, dst_h))
-                    bg_x = self.rect.x - (pad_x // 2)
-                    bg_y = bar_rect.centery - (dst_h // 2)
-                    # blit behind (under) the bar and year
-                    surface.blit(bg_scaled, (bg_x, bg_y))
-            except Exception:
-                pass
+            # (no external bar background image; draw only the bar and year card)
             pygame.draw.rect(surface, (200,200,200), bar_rect, border_radius=4)
             # fill upto current year
             pos = self.year_to_pos(self.year)
