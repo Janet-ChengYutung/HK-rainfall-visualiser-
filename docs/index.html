@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width,initial-scale=1">
+		<title>HK Rainfall Visualiser</title>
+		<style>
+			body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial; margin: 32px; background: #f7fafc; color:#0b1220 }
+			a { color:#0b5cff }
+			header { margin-bottom: 18px }
+			.card { background: white; border-radius: 10px; padding: 18px; box-shadow: 0 6px 20px rgba(11,17,32,0.06); max-width: 860px }
+			pre { background:#0b1220; color:#dbeafe; padding:12px; border-radius:8px; overflow:auto }
+			.muted { color:#6b7280 }
+		</style>
+	</head>
+	<body>
+		<header>
+			<h1>HK Rainfall Visualiser</h1>
+			<p class="muted">A pygame-based interactive visualiser for historical Hong Kong rainfall data.</p>
+		</header>
+		<section class="card">
+			<h2>Quick start (run locally)</h2>
+			<ol>
+				<li>Clone the repo: <code>git clone https://github.com/Janet-ChengYutung/HK-rainfall-visualiser-.git</code></li>
+				<li>Install Python and dependencies (recommend a venv):
+					<pre>python3 -m venv .venv
+source .venv/bin/activate
+pip install pygame</pre>
+				</li>
+				<li>Run the app:
+					<pre>python3 Main.py</pre>
+				</li>
+			</ol>
+			<p>If you want a published demo on GitHub Pages, I can either host a static landing page here, or embed a read-only view of the source. Tell me which you prefer.</p>
+			<p>Repository: <a href="https://github.com/Janet-ChengYutung/HK-rainfall-visualiser-">Janet-ChengYutung/HK-rainfall-visualiser-</a></p>
+		</section>
+		<footer style="margin-top:18px; max-width:860px" class="muted">Note: The interactive visualiser is a local pygame app and cannot run directly inside GitHub Pages. This page provides instructions and download links.</footer>
+	</body>
+</html>
