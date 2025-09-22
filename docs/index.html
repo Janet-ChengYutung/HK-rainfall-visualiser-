@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>HK Rainfall Visualiser — Main.py</title>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, Roboto, 'Segoe UI', sans-serif; background:#f7fafc; color:#0f172a; padding:24px }
+    pre { background: #0b1220; color: #dbeafe; padding:16px; border-radius:8px; overflow:auto; max-width:100%; }
+    h1 { font-size:20px; margin-bottom:12px }
+    .note { color:#6b7280; margin-bottom:16px }
+  </style>
+</head>
+<body>
+  <h1>HK Rainfall Visualiser — Main.py</h1>
+  <p class="note">This page displays the repository's <code>Main.py</code> for quick viewing. The app is a pygame-based visualiser — run locally to interact with it.</p>
+  <pre id="code">Loading...</pre>
+  <script>
+    fetch('Main.py').then(r => r.ok ? r.text() : 'Failed to load').then(t => {
+      const el = document.getElementById('code');
+      el.textContent = t;
+    }).catch(e => document.getElementById('code').textContent = 'Error: ' + e);
+  </script>
+</body>
+</html>
